@@ -1,0 +1,25 @@
+# nada pessoal nem interno vai pro repositorio
+config.json
+contexto_crown.md
+contexto.md
+termos.txt
+bloco_de_notas.txt
+transcricoes/
+tradutor_log*.txt
+.teste_recorte.json
+
+# dados da janela (WebView2) e caches
+.janela/
+.janela_teste/
+__pycache__/
+*.pyc
+
+# versoes antigas e copias de trabalho
+pagina_v*.html
+*.bak
+ABRIR TRADUTOR.bat
+
+# saida do empacotador
+build/
+dist/
+*.spec

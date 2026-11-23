@@ -1,0 +1,40 @@
+# Gera o instalador e publica a versao quando sobe uma tag "vX.Y.Z".
+# Assim a pagina da versao mostra "github-actions" e ninguem precisa gerar o .exe no proprio PC.
+name: Lancar versao
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lancar:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Gerar o instalador
+        shell: pwsh
+        run: ./gerar_exe.ps1
+
+      - name: Publicar a versao
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ver = (Get-Content versao.txt -Raw).Trim()
+          $tag = "v$ver"
+          gh release create $tag "dist/Instalar-Tradutor-de-Call.exe" --title "Tradutor de call $ver" --notes-file NOVIDADES.md

@@ -1,0 +1,859 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tradutor de call</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* v6 — barra flutuante (pedido do LAST 22/11, no formato do print que ele mandou):
+   pílulas pretas soltas no topo (captar · Ouvir / Responder · Notas / Ajustes) e painéis pretos arredondados embaixo.
+   No programa a janela é recortada no formato das peças ([data-shape]); o resto da tela fica livre e clicável.
+   Código e ícones próprios. A cor de destaque é a que ele escolher em Ajustes. */
+:root{
+  --bg:#0b0b0d; --rise:#161618; --rise2:#202023; --line:#26262a; --line2:#3a3a40;
+  --ink:#f5f5f4; --text:#d2d2d0; --mute:#9a9a9e; --dim:#63636a;
+  --crown:#ffd200; --crown-d:#e6bd00; --on-crown:#141100; --crown-ink:#ffd200; --green:#5fd08c; --red:#e5484d;
+  --fs:22px;
+  --sans:"Hanken Grotesk","Segoe UI",system-ui,sans-serif; --mono:"JetBrains Mono",Consolas,monospace;
+}
+[data-theme="grafite"]{--bg:#17181b;--rise:#202226;--rise2:#2a2d32;--line:#2f3237;--line2:#454950;--ink:#f1f3f5;--text:#c9cdd3;--mute:#9298a0;--dim:#666b73}
+[data-theme="claro"]{--bg:#f4f2ec;--rise:#e9e6dd;--rise2:#dedacf;--line:#d8d3c6;--line2:#bdb6a6;--ink:#1a1814;--text:#3a362e;--mute:#6f6a5e;--dim:#9a9486;--green:#2e9e5f;--red:#d8483b}
+*{box-sizing:border-box;margin:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+body.web{background:linear-gradient(160deg,#6f8f95,#b9a57c 55%,#5d6b46)}   /* só no navegador: um fundo pra ver as peças soltas */
+button,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+:focus-visible{outline:1.5px solid var(--crown-ink);outline-offset:2px;border-radius:8px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+#root{width:100%;max-width:640px;margin:0 auto;padding:14px 0 0;display:flex;flex-direction:column;align-items:center;gap:12px}
+[data-shape]{background:var(--bg)}
+
+/* ---------- barra de pílulas ---------- */
+.bar{display:flex;align-items:center;gap:12px}
+.pill{display:flex;align-items:center;height:60px;border-radius:30px;padding:0 6px;position:relative}
+.rec{flex-direction:column;justify-content:space-between;width:36px;padding:7px 0;border-radius:18px}
+#pause{width:22px;height:22px;border-radius:50%;background:var(--dim);position:relative;flex:none}
+#pause i{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--red);opacity:0}
+.capt #pause{background:var(--red)}
+.grip{width:24px;height:22px;display:grid;place-items:center;color:var(--mute);cursor:grab}
+.grip svg{width:14px;height:14px;pointer-events:none}
+.tb{width:86px;height:60px;border-radius:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
+  color:var(--ink);font-size:12.5px;font-weight:600;letter-spacing:.01em;position:relative}
+.tb svg{width:20px;height:20px}
+.tb:hover{color:var(--mute)}
+.tb.on,.tb.on:hover{color:var(--crown-ink)}
+.tb .d{position:absolute;top:10px;right:20px;width:7px;height:7px;border-radius:50%;background:var(--crown-ink);transform:scale(0)}
+.xp{width:36px;height:36px;border-radius:50%;padding:0;justify-content:center;color:var(--mute)}
+.xp:hover{color:var(--ink)}
+.xp svg{width:14px;height:14px}
+/* aviso rápido: aparece por cima da pílula do meio */
+.toast{position:absolute;inset:0;border-radius:30px;background:var(--bg);display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:600;padding:0 14px;text-align:center;visibility:hidden;z-index:5}
+
+/* ---------- painéis ---------- */
+.panel{width:100%;border-radius:16px;display:none;flex-direction:column;overflow:hidden}
+.phd{height:42px;display:flex;align-items:center;padding:0 6px 0 8px;flex:none}
+.phd .grip{width:30px;height:30px}
+.phd b{flex:1;text-align:center;font-size:14px;font-weight:600}
+.phd b small{font-weight:500;color:var(--mute);font-size:12px;margin-left:8px}
+.ib{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--mute);flex:none}
+.ib:hover{color:var(--ink);background:var(--rise)}
+.ib svg{width:15px;height:15px}
+.roll{display:inline-block;overflow:hidden;height:1.3em;line-height:1.3em;vertical-align:bottom}
+.roll span{display:block}
+
+/* ---------- call ---------- */
+#list{height:250px;overflow-y:auto;padding:14px 18px 2px;display:flex;flex-direction:column;
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 44px);mask-image:linear-gradient(to bottom,transparent 0,#000 44px)}
+#list::before{content:"";flex:1 0 0}
+#list > *{flex:none}
+#list::-webkit-scrollbar{width:0}
+.row{margin-top:14px;opacity:.36;cursor:pointer;transform-origin:0 100%}
+.row.prev{opacity:.62}
+.row:hover{opacity:1}
+.row .meta{display:flex;gap:12px;font-size:10.5px;color:var(--dim);margin-bottom:3px;font-family:var(--mono)}
+.row .meta em{font-style:normal;opacity:0}
+.row:hover .meta em{opacity:1}
+.row .meta em.nt{color:var(--crown-ink)}
+.row .a{font-size:15px;font-weight:500;line-height:1.4;color:var(--ink);text-wrap:pretty}
+.row .b{font-size:13px;line-height:1.45;color:var(--mute);margin-top:2px;text-wrap:pretty}
+.row.cur{opacity:1;cursor:default;margin-top:18px}
+.row.cur .meta{color:var(--mute)}
+.row.cur .meta em.cpy{display:none}
+.row.cur .meta em.nt{opacity:.8;cursor:pointer}
+.row.cur .a{font-size:var(--fs);font-weight:600;line-height:1.24;letter-spacing:-.01em}
+.row.cur .b{font-size:14px;color:var(--text);margin-top:6px}
+.row.live .a{color:var(--mute)} .row.live .b{color:var(--dim)}
+.hide-b .row .b{display:none}
+.w{display:inline-block;overflow:hidden;vertical-align:top;padding-bottom:.14em;margin-bottom:-.14em}
+.wi{display:inline-block;will-change:transform}
+.caret{display:inline-block;width:2px;height:.82em;background:var(--crown);margin-left:5px;vertical-align:-.06em;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.empty{padding-bottom:4px}
+.empty h1{font-size:17px;font-weight:600;line-height:1.3}
+.empty p{font-size:13.5px;color:var(--mute);margin-top:5px;line-height:1.5}
+.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:10px;background:var(--crown);color:var(--on-crown);font-size:13px;font-weight:600;white-space:nowrap}
+.empty .btn{margin-top:14px}
+#sig{display:block;width:100%;height:46px;flex:none}
+
+/* ---------- responder ---------- */
+.box{margin:0 8px 8px;border-radius:12px;background:var(--rise);padding:12px 12px 8px}
+#msg{display:block;width:100%;height:52px;resize:none;background:none;border:0;outline:0;font-size:16px;font-weight:500;line-height:1.4}
+#msg::placeholder{color:var(--mute)}
+.tools{display:flex;align-items:center;gap:6px;margin-top:6px}
+.chip{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 10px 0 8px;border-radius:10px;color:var(--crown-ink);font-size:13px;font-weight:600}
+.chip:hover{background:var(--rise2)}
+.chip svg{width:18px;height:18px}
+.chip kbd{font-family:var(--mono);font-size:10px;font-weight:500;color:var(--mute);padding:1px 5px;border-radius:5px;background:var(--rise2)}
+.chip.busy{color:var(--mute)}
+.send{margin-left:auto;width:36px;height:36px;border-radius:10px;background:var(--rise2);display:grid;place-items:center;color:var(--crown-ink)}
+.send svg{width:17px;height:17px}
+.dh{display:none;align-items:center;gap:10px;padding:2px 18px 4px;font-size:12px;color:var(--mute)}
+.dh b{font-weight:600;color:var(--text)}
+#dockBody{padding:0 8px 8px;max-height:230px;overflow-y:auto;position:relative}
+#dockBody:empty{display:none}
+#dockBody::-webkit-scrollbar{width:0}
+.hi{position:absolute;left:8px;right:8px;top:0;height:0;border-radius:10px;background:var(--rise);pointer-events:none;visibility:hidden}
+.sg{display:grid;grid-template-columns:26px 1fr auto;column-gap:4px;width:100%;text-align:left;padding:9px 12px;position:relative;z-index:1}
+.sg .k{color:var(--dim);font-size:11px;padding-top:4px}
+.sg.sel .k,.sg.flash .k{color:var(--crown-ink)}
+.sg .tx{min-width:0}
+.sg .m{display:block;overflow:hidden}
+.sg .e{display:block;font-size:16px;font-weight:600;line-height:1.35;color:var(--ink)}
+.sg .p{display:block;font-size:13px;line-height:1.4;color:var(--mute);margin-top:1px}
+.sg .cp{color:var(--dim);font-size:11px;padding-top:4px;opacity:0;overflow:hidden;height:1.7em}
+.sg .cp span{display:block}
+.sg.sel .cp{opacity:1}
+.sg.flash .cp{color:var(--crown-ink)}
+.note{font-size:13.5px;color:var(--mute);padding:6px 12px 8px}
+
+/* ---------- notas ---------- */
+#padT{display:block;width:100%;height:210px;resize:none;background:none;border:0;outline:0;font-size:14.5px;line-height:1.6}
+#padT::placeholder{color:var(--mute)}
+#padT::-webkit-scrollbar{width:0}
+.pf{display:flex;align-items:center;gap:14px;margin-top:6px;font-size:12px;color:var(--dim)}
+.pf .roll{margin-right:auto}
+.pf button{color:var(--mute);font-weight:600} .pf button:hover{color:var(--ink)}
+
+/* ---------- ajustes ---------- */
+.setw{display:flex;min-height:0}
+/* menu lateral de ícones: cada um mostra um grupo de ajustes */
+.snav{flex:none;display:flex;flex-direction:column;gap:8px;padding:2px 0 12px 12px}
+.snav button{width:40px;height:40px;border-radius:11px;background:var(--rise);display:grid;place-items:center;color:var(--crown-ink)}
+.snav button svg{width:18px;height:18px}
+.snav button.on{background:var(--crown);color:var(--on-crown)}
+.shead{padding:2px 0 12px}
+.shead b{display:block;font-size:17px;font-weight:700}
+.shead span{display:block;font-size:13px;color:var(--mute);margin-top:2px}
+.sb{flex:1;min-width:0;height:350px;overflow-y:auto;padding:0 18px 12px 14px}
+.sb .pr{display:none}
+.sb[data-pg="geral"] .pr[data-g="geral"],.sb[data-pg="visual"] .pr[data-g="visual"],.sb[data-pg="ia"] .pr[data-g="ia"],.sb[data-pg="keys"] .pr[data-g="keys"]{display:flex}
+body.web .apponly{display:none!important}
+.th{display:flex;align-items:center;gap:8px;padding:7px 8px 7px 10px;border-radius:12px}
+.th.on{background:var(--rise)}
+.th i{width:16px;height:16px;border-radius:5px;box-shadow:0 0 0 1px var(--line2);flex:none}
+.th b{flex:1;font-size:14px;font-weight:600;margin-left:4px}
+.th b small{font-weight:500;color:var(--mute);font-size:12px;margin-left:6px}
+.th button{height:30px;min-width:84px;padding:0 16px;border-radius:15px;font-size:13px;font-weight:700;background:var(--rise2);color:var(--crown-ink)}
+.th.on button{background:var(--crown);color:var(--on-crown)}
+.sb::-webkit-scrollbar{width:0}
+.pr{display:flex;align-items:center;gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.pr:first-child{border-top:0}
+.pr .l{flex:1;min-width:0}
+.pr .l b{display:block;font-size:14px;font-weight:600}
+.pr .l span{display:block;font-size:12px;color:var(--mute);margin-top:1px}
+.pr.col{flex-direction:column;align-items:stretch;gap:10px}
+.seg{display:flex;flex:none;position:relative;background:var(--rise);border-radius:10px;padding:3px}
+.seg button{height:26px;padding:0 11px;font-size:12.5px;font-weight:600;color:var(--mute);position:relative;z-index:1;transition:color .3s ease}
+.seg button.on{color:var(--ink)}
+.seg .thumb{position:absolute;top:3px;left:0;width:0;height:26px;background:var(--rise2);border-radius:8px}
+.seg.wide{align-self:stretch}
+.seg.wide button{flex:1;padding:0 4px}
+.pr input[type=range]{width:130px;accent-color:var(--crown)}
+#upd{height:38px;border-radius:19px;padding:0 6px 0 16px;gap:12px;font-size:13px;font-weight:600;color:var(--text)}
+#upd b{height:26px;display:inline-flex;align-items:center;padding:0 12px;border-radius:13px;background:var(--crown);color:var(--on-crown);font-weight:700}
+.tin{width:170px!important;height:32px;flex:none}
+.tarea{min-height:120px;resize:vertical;line-height:1.5}
+#notes,.iaRow input,.tin,.tarea{width:100%;background:var(--rise);border:1px solid transparent;border-radius:10px;padding:8px 10px;font-size:13.5px;outline:0}
+#notes{min-height:56px;resize:vertical}
+#notes:focus,.iaRow input:focus{border-color:var(--line2)}
+.sws{display:flex;align-items:center;gap:11px}
+.sw{width:18px;height:18px;border-radius:50%;flex:none;box-shadow:0 0 0 1px var(--line2)}
+.sw.on{box-shadow:0 0 0 3px var(--bg),0 0 0 4.5px var(--ink)}
+.sw.pick{position:relative;overflow:hidden;background:conic-gradient(#ff5f57,#ffd200,#7ee081,#6cb6ff,#ff7eb6,#ff5f57)}
+.sw.pick input{position:absolute;inset:-8px;width:40px;height:40px;opacity:0;cursor:pointer}
+#iaBox{display:flex;flex-direction:column;gap:8px}
+.iaSt{font-size:12.5px;color:var(--mute);display:flex;align-items:center;gap:8px}
+.iaSt::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--dim);flex:none}
+.iaSt.ok::before{background:var(--green)} .iaSt.no::before{background:var(--crown)}
+.iaRow{display:flex;align-items:center;gap:8px}
+.iaRow label{font-size:12.5px;color:var(--mute);flex:none;width:52px}
+.iaRow input{flex:1;min-width:0;height:32px}
+.iaRow input::placeholder{color:var(--dim)}
+.ghost{height:32px;padding:0 12px;border-radius:10px;background:var(--rise);font-size:13px;font-weight:600;flex:none}
+.ghost:hover{background:var(--rise2)}
+.dev{display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:6px 0;font-size:13.5px;color:var(--mute)}
+.dev:hover{color:var(--ink)}
+.dev .r{width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 1px var(--dim);flex:none;margin:0 3px}
+.dev.sel{color:var(--ink)} .dev.sel .r{background:var(--crown);box-shadow:0 0 0 1px var(--crown)}
+.dev small{display:block;font-size:12px;color:var(--dim)}
+.dev .lv{margin-left:auto;font-size:11px;color:var(--green)}
+.keys{font-size:12.5px;color:var(--mute);line-height:2}
+.keys kbd{font-family:var(--mono);font-size:10.5px;color:var(--text);padding:2px 6px;background:var(--rise);border-radius:6px;margin-right:8px}
+</style>
+</head>
+<body>
+<div id="root">
+  <div class="bar" id="bar">
+    <div class="pill rec" data-shape>
+      <button id="pause" title="Ligar ou desligar a captação (Ctrl+Shift+L)" aria-label="Ligar ou desligar a captação"><i></i></button>
+      <div class="grip pywebview-drag-region" title="Arrastar"><svg viewBox="0 0 14 14" fill="currentColor"><circle cx="2" cy="2" r="1.3"/><circle cx="7" cy="2" r="1.3"/><circle cx="12" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="7" cy="7" r="1.3"/><circle cx="12" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="7" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/></svg></div>
+    </div>
+    <div class="pill" data-shape>
+      <button class="tb" id="tCall" title="Mostrar a call"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>Ouvir<span class="d"></span></button>
+      <button class="tb" id="tAsk" title="Responder (R sugere)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6M9 20h6M12 4v16"/></svg>Responder<span class="d"></span></button>
+      <div class="toast" id="toast"></div>
+    </div>
+    <div class="pill" data-shape>
+      <button class="tb" id="tNotes" title="Bloco de notas (N)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></svg>Notas<span class="d"></span></button>
+      <button class="tb" id="tSet" title="Ajustes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.8l1.6 2.3 2.7-.5.6 2.7 2.6 1-1 2.5 1.7 2.2-2.1 1.8.3 2.7-2.7.5-1.2 2.5-2.5-1.2-2.5 1.2-1.2-2.5-2.7-.5.3-2.7-2.1-1.8L5.5 11l-1-2.5 2.6-1 .6-2.7 2.7.5z"/></svg>Ajustes<span class="d"></span></button>
+    </div>
+    <button class="pill xp" id="quit" data-shape title="Fechar o tradutor" aria-label="Fechar o tradutor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+  </div>
+  <button class="pill" id="upd" data-shape style="display:none" title="Baixar e instalar a versão nova"><span id="updT"></span><b id="updA">Atualizar</b></button>
+
+  <section class="panel" id="pCall" data-shape>
+    <div class="phd"><div class="grip pywebview-drag-region" title="Arrastar"><svg viewBox="0 0 14 14" fill="currentColor"><circle cx="4" cy="2" r="1.2"/><circle cx="10" cy="2" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="10" cy="12" r="1.2"/></svg></div>
+      <b>Call<small><span class="roll"><span id="stt">Conectando</span></span></small></b>
+      <button class="ib" id="reset" title="Apagar o chat e recomeçar" aria-label="Apagar o chat e recomeçar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
+      <button class="ib" data-x="call" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <main id="list"></main>
+    <canvas id="sig" aria-hidden="true"></canvas>
+  </section>
+
+  <section class="panel" id="pAsk" data-shape>
+    <div class="phd"><div class="grip pywebview-drag-region"><svg viewBox="0 0 14 14" fill="currentColor"><circle cx="4" cy="2" r="1.2"/><circle cx="10" cy="2" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="10" cy="12" r="1.2"/></svg></div>
+      <b>Responder</b><span class="ib" style="visibility:hidden"></span>
+      <button class="ib" data-x="slot" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="box">
+      <textarea id="msg" placeholder="Escreve em português…" aria-label="Escrever em português"></textarea>
+      <div class="tools">
+        <button class="chip" id="suggest" title="Pedir 3 respostas prontas pra última fala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg><span class="roll"><span id="sugL">Sugerir resposta</span></span><kbd>R</kbd></button>
+        <button class="send" id="send" title="Traduzir pro inglês (Enter)" aria-label="Traduzir pro inglês"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+      </div>
+    </div>
+    <div class="dh" id="dh"><b id="dockT">Respostas</b><span id="dockH"></span></div>
+    <div id="dockBody"></div>
+  </section>
+
+  <section class="panel" id="pNotes" data-shape>
+    <div class="phd"><div class="grip pywebview-drag-region"><svg viewBox="0 0 14 14" fill="currentColor"><circle cx="4" cy="2" r="1.2"/><circle cx="10" cy="2" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="10" cy="12" r="1.2"/></svg></div>
+      <b>Notas</b><span class="ib" style="visibility:hidden"></span>
+      <button class="ib" data-x="slot" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="box">
+      <textarea id="padT" spellcheck="false" placeholder="Anota aqui: o que combinaram, nomes, prazos.&#10;Passa o mouse numa fala e clica em “+ anotar” pra mandar ela pra cá."></textarea>
+      <div class="pf"><span class="roll"><span id="padS">Salva sozinho</span></span><button id="padAuto" title="A IA anota sozinha os tópicos da call">Anotar sozinho: ligado</button><button id="padNow" title="Anotar agora o que foi falado">Anotar agora</button><button id="padCopy">Copiar tudo</button><button id="padClear">Limpar</button></div>
+    </div>
+  </section>
+
+  <section class="panel" id="pSet" data-shape>
+    <div class="phd"><div class="grip pywebview-drag-region"><svg viewBox="0 0 14 14" fill="currentColor"><circle cx="4" cy="2" r="1.2"/><circle cx="10" cy="2" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="10" cy="12" r="1.2"/></svg></div>
+      <b>Ajustes</b><span class="ib" style="visibility:hidden"></span>
+      <button class="ib" data-x="slot" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <div class="setw">
+    <nav class="snav" id="snav" aria-label="Seções dos ajustes">
+      <button data-pg="geral" title="Geral" aria-label="Geral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2.8l1.6 2.3 2.7-.5.6 2.7 2.6 1-1 2.5 1.7 2.2-2.1 1.8.3 2.7-2.7.5-1.2 2.5-2.5-1.2-2.5 1.2-1.2-2.5-2.7-.5.3-2.7-2.1-1.8L5.5 11l-1-2.5 2.6-1 .6-2.7 2.7.5z"/></svg></button>
+      <button data-pg="visual" title="Aparência" aria-label="Aparência"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a9 9 0 1 0 0 18c1.4 0 2-1 2-2 0-1.6-1-2 0-3 .8-.8 2.2-.4 4-.6 2-.3 3-1.800 3-3.400C21 6.500 17 3 12 3z"/><circle cx="7.500" cy="11.500" r="1"/><circle cx="10" cy="7.500" r="1"/><circle cx="15" cy="7.500" r="1"/></svg></button>
+      <button data-pg="ia" title="Respostas" aria-label="Respostas"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg></button>
+      <button data-pg="keys" title="Atalhos" aria-label="Atalhos"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h.01M11 10h.01M15 10h.01M8 14h8"/></svg></button>
+    </nav>
+    <div class="sb" id="sb" data-pg="geral">
+      <div class="shead"><b id="pgT">Geral</b><span id="pgS"></span></div>
+      <div class="pr col"><div class="l"><b>Do que é a call</b><span>As respostas sugeridas usam isso</span></div>
+        <textarea id="notes" placeholder="ex.: call com o time sobre os hooks do batch novo"></textarea></div>
+      <div class="pr"><div class="l"><b>Teu nome</b><span>Como a IA te chama nas respostas</span></div>
+        <input id="meName" class="tin" maxlength="40" autocomplete="off" spellcheck="false" placeholder="ex.: Ana"></div>
+      <div class="pr col"><div class="l"><b>Contexto fixo</b><span>Quem você é, com o que trabalha e como costuma responder. Vale pra toda call de trabalho.</span></div>
+        <textarea id="ctxFile" class="tarea" spellcheck="false"></textarea></div>
+      <div class="pr col"><div class="l"><b>Nomes e termos</b><span>Nomes do time, produtos e gírias do trabalho, separados por vírgula. Ajuda a transcrição a acertar.</span></div>
+        <textarea id="termsBox" class="tarea" style="min-height:64px" spellcheck="false"></textarea></div>
+      <div class="pr"><div class="l"><b>Tipo de call</b><span id="ctxHint"></span></div>
+        <div class="seg" id="ctxSeg"><button data-v="crown">Trabalho</button><button data-v="comum">Conversa comum</button></div></div>
+      <div class="pr"><div class="l"><b>O que ele capta</b><span id="capHint"></span></div>
+        <div class="seg" id="capSeg"><button data-v="1">Só inglês</button><button data-v="0">Tudo</button></div></div>
+      <div class="pr"><div class="l"><b>Velocidade</b><span id="spdHint"></span></div>
+        <div class="seg" id="spdSeg"><button data-v="real">Tempo real</button><button data-v="equil">Equilibrado</button><button data-v="preciso">Preciso</button></div></div>
+      <div class="pr"><div class="l"><b>Cor de destaque</b></div><div class="sws" id="sws"></div></div>
+      <div class="pr col"><div class="l"><b>Temas</b></div><div id="themeList"></div></div>
+      <div class="pr apponly"><div class="l"><b>Estilo do fundo</b><span id="glassHint"></span></div>
+        <div class="seg" id="glassSeg"><button data-v="1">Transparente</button><button data-v="0">Sólido</button></div></div>
+      <div class="pr"><div class="l"><b>Texto grande</b></div>
+        <div class="seg" id="mainSeg"><button data-v="pt">Português</button><button data-v="en">Inglês</button></div></div>
+      <div class="pr"><div class="l"><b>Segunda língua embaixo</b></div>
+        <div class="seg" id="secSeg"><button data-v="1">Mostrar</button><button data-v="0">Esconder</button></div></div>
+      <div class="pr"><div class="l"><b>Tamanho da letra</b><span>Ou Ctrl + rodinha do mouse</span></div><input type="range" id="fs" min="17" max="34"></div>
+      <div class="pr apponly" id="topRow"><div class="l"><b>Sempre por cima</b></div>
+        <div class="seg" id="topSeg"><button data-v="1">Sim</button><button data-v="0">Não</button></div></div>
+      <div class="pr" id="capRow" style="display:none"><div class="l"><b>No print e na tela compartilhada</b><span>Ctrl+Shift+P troca</span></div>
+        <div class="seg" id="hideSeg"><button data-v="1">Invisível</button><button data-v="0">Aparece</button></div></div>
+      <div class="pr apponly" id="opRow"><div class="l"><b>Quanto transparente</b><span>Ctrl+Shift+↑ ↓</span></div><input type="range" id="op" min="30" max="100" step="5" value="100"></div>
+      <div class="pr"><div class="l"><b>Sensibilidade</b><span>Aumenta se não pegar voz baixa</span></div><input type="range" id="sens" min="1" max="12" value="5"></div>
+      <div class="pr col"><div class="l"><b>Qual IA sugere as respostas</b><span>Só roda quando você pede uma resposta</span></div>
+        <div class="seg wide" id="iaSeg"><button data-v="gemini">Gemini</button><button data-v="openai">ChatGPT</button><button data-v="claude">Claude</button><button data-v="grok">Grok</button><button data-v="off">Desligado</button></div>
+        <div id="iaBox">
+          <div class="iaSt" id="iaSt"></div>
+          <div class="iaRow"><input id="iaKey" type="password" autocomplete="off" spellcheck="false" aria-label="Chave da API"><button class="ghost" id="iaSave">Salvar</button></div>
+          <div class="iaRow"><label for="iaModel">Modelo</label><input id="iaModel" class="mono" autocomplete="off" spellcheck="false"></div>
+        </div></div>
+      <div class="pr col"><div class="l"><b>De onde vem o áudio</b></div><div id="devs"></div></div>
+      <div class="pr"><div class="l"><b>Apagar o chat e recomeçar</b><span>A call anterior fica salva em transcricoes</span></div><button class="ghost" id="clear">Apagar</button></div>
+      <div class="pr col"><div class="l"><b>Atalhos</b><span>Funcionam com o Discord na frente</span></div>
+        <div class="keys" id="keysBox"><kbd>Ctrl+Shift+R</kbd>sugerir resposta<br><kbd>Ctrl+Shift+1 2 3</kbd>copiar uma resposta<br><kbd>Ctrl+Shift+L</kbd>ligar ou desligar a captação<br><kbd>Ctrl+Shift+H</kbd>esconder ou mostrar tudo<br><kbd>Ctrl+Shift+↑ ↓</kbd>transparência</div></div>
+      <div class="pr"><div class="l"><b>Restaurar padrões</b><span>Volta tema, cores, fundo e letra ao original</span></div><button class="ghost" id="restore">Restaurar</button></div>
+    </div>
+    </div>
+  </section>
+</div>
+
+<script src="/gsap.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+gsap.defaults({ ease: "expo.out", duration: reduce ? 0 : .5 });
+const esc = s => (s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const list = $("list");
+const api = () => window.pywebview && window.pywebview.api && window.pywebview.api.shape ? window.pywebview.api : null;
+
+/* ---------- recorte da janela: só as peças existem na tela ---------- */
+let shapeQ = 0;
+function shape(){
+  if (shapeQ) return;
+  shapeQ = requestAnimationFrame(() => { shapeQ = 0; const a = api(); if (!a) return;
+    const d = devicePixelRatio || 1, rects = [];
+    document.querySelectorAll("[data-shape]").forEach(el => { if (!el.offsetParent) return;
+      const r = el.getBoundingClientRect(); if (r.width < 2 || r.height < 2) return;
+      const rad = Math.min(parseFloat(getComputedStyle(el).borderTopLeftRadius) || 0, r.height / 2, r.width / 2);
+      rects.push([r.left * d, r.top * d, r.width * d, r.height * d, rad * d]); });
+    a.shape(rects); });
+}
+new ResizeObserver(shape).observe($("root"));
+document.querySelectorAll(".panel").forEach(p => new ResizeObserver(shape).observe(p));
+addEventListener("resize", shape);
+
+/* ---------- preferências e cores ---------- */
+const pref = { fs: 22, main: "pt", sec: "1", accent: "#ffd200", theme: "quente", call: true };
+try { Object.assign(pref, JSON.parse(localStorage.getItem("tradutor6") || "{}")); } catch (e) {}
+// LAST 22/11: as escolhas (cor, fundo, vidro, letra...) ficam no config.json do PC; o localStorage da janela
+// se perdia quando o app fechava. O servidor coloca window.__PREFS na pagina antes de tudo.
+if (window.__PREFS && typeof window.__PREFS === "object") Object.assign(pref, window.__PREFS);
+const ACCENTS = [["#ffd200", "Amarelo"], ["#7ee081", "Verde"], ["#6cb6ff", "Azul"], ["#ff9f43", "Laranja"], ["#ff7eb6", "Rosa"], ["#f5f5f4", "Branco"]];
+const rgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const hex = c => "#" + c.map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+const lum = h => { const [r, g, b] = rgb(h).map(v => { v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }); return .2126 * r + .7152 * g + .0722 * b; };
+const shade = (h, k) => hex(rgb(h).map(v => v * k));
+const C = { accent: [255, 210, 0], line: "#3a3a40" };   // cores que o canvas usa
+function applyColors(){
+  const a = /^#[0-9a-f]{6}$/i.test(pref.accent) ? pref.accent : "#ffd200", light = pref.theme === "claro";
+  const st = document.documentElement.style;
+  document.documentElement.dataset.theme = pref.theme;
+  st.setProperty("--crown", a);
+  st.setProperty("--crown-d", shade(a, .9));
+  st.setProperty("--on-crown", lum(a) > .4 ? "#14110a" : "#ffffff");
+  let ink = a; // em texto/ícone a cor escurece no fundo claro até dar pra ler
+  if (light){ let k = 1; while (lum(ink) > .22 && k > .2){ k -= .08; ink = shade(a, k); } }
+  else if (lum(a) < .12) ink = "#f5f5f4";
+  st.setProperty("--crown-ink", ink);
+  C.accent = rgb(light ? ink : a); C.line = css("--line2");
+  document.querySelectorAll("#sws .sw[data-c]").forEach(s => s.classList.toggle("on", s.dataset.c.toLowerCase() === a.toLowerCase()));
+  const pk = document.querySelector("#sws .pick");
+  if (pk){ pk.classList.toggle("on", !ACCENTS.some(x => x[0].toLowerCase() === a.toLowerCase())); pk.querySelector("input").value = a; }
+}
+/* seletor com bloco que desliza até a opção escolhida */
+document.querySelectorAll(".seg").forEach(s => { const t = document.createElement("div"); t.className = "thumb"; s.prepend(t); });
+const segVal = {};
+function segSet(id, v, anim){
+  const s = $(id); let on = null; segVal[id] = v;
+  s.querySelectorAll("button").forEach(b => { const m = b.dataset.v === v; b.classList.toggle("on", m); if (m) on = b; });
+  if (on && on.offsetWidth) gsap.to(s.querySelector(".thumb"), { x: on.offsetLeft, width: on.offsetWidth, duration: anim && !reduce ? .45 : 0, overwrite: true });
+}
+ACCENTS.forEach(([c, n]) => { const b = document.createElement("button"); b.className = "sw"; b.dataset.c = c; b.style.background = c; b.title = n; b.setAttribute("aria-label", n);
+  b.onclick = () => { pref.accent = c; applyPrefs(); pulse(); }; $("sws").appendChild(b); });
+{ const p = document.createElement("label"); p.className = "sw pick"; p.title = "Escolher outra cor"; p.innerHTML = '<input type="color" aria-label="Escolher outra cor">';
+  p.querySelector("input").oninput = e => { pref.accent = e.target.value; applyPrefs(); }; $("sws").appendChild(p); }
+let prefT;
+function savePrefs(){ try { localStorage.setItem("tradutor6", JSON.stringify(pref)); } catch (e) {}
+  clearTimeout(prefT); prefT = setTimeout(() => fetch("/prefs", { method: "POST", body: JSON.stringify(pref) }).catch(() => {}), 250); }
+function applyPrefs(anim){
+  document.documentElement.style.setProperty("--fs", pref.fs + "px");
+  document.body.classList.toggle("hide-b", pref.sec === "0");
+  $("fs").value = pref.fs;
+  segSet("mainSeg", pref.main, anim); segSet("secSeg", pref.sec, anim); segSet("glassSeg", pref.glass ? "1" : "0", anim);
+  renderThemes();
+  applyColors(); savePrefs();
+}
+function texts(it){
+  if (it.mine && it.lang === "pt") return [it.en, it.pt];
+  return pref.main === "en" ? [it.en, it.pt] : [it.pt, it.en];
+}
+
+/* ---------- painéis: "Ouvir" liga e desliga a call; Responder / Notas / Ajustes dividem o espaço de baixo ---------- */
+const SLOT = { ask: ["pAsk", "tAsk"], notes: ["pNotes", "tNotes"], set: ["pSet", "tSet"] };
+let slot = null, pOpen = false;
+function tab(btn, on){ btn.classList.toggle("on", on);
+  gsap.to(btn.querySelector(".d"), { scale: on ? 1 : 0, duration: reduce ? 0 : .5, ease: on ? "back.out(3)" : "power2.in", overwrite: true }); }
+function reveal(p){ p.style.display = "flex"; shape();
+  if (!reduce) gsap.fromTo(p.children, { autoAlpha: 0, y: 10 }, { autoAlpha: 1, y: 0, duration: .55, stagger: .06, clearProps: "opacity,visibility,transform", overwrite: true }); }
+function conceal(p, done){ if (p.style.display !== "flex"){ done && done(); return; }
+  const end = () => { p.style.display = "none"; gsap.set(p.children, { clearProps: "opacity,visibility,transform" }); shape(); done && done(); };
+  if (reduce) return end();
+  gsap.to(p.children, { autoAlpha: 0, y: -6, duration: .16, ease: "power2.in", overwrite: true, onComplete: end }); }
+function openSlot(name){
+  if (name === slot) return;
+  const old = slot; slot = name; pOpen = name === "set";
+  Object.keys(SLOT).forEach(k => tab($(SLOT[k][1]), k === name));
+  const show = () => { if (!name || slot !== name) return; reveal($(SLOT[name][0]));
+    if (name === "set"){ loadDevices(); Object.keys(segVal).forEach(k => segSet(k, segVal[k], false));
+      if (!reduce) gsap.from("#pSet .pr", { autoAlpha: 0, x: 18, stagger: .03, duration: .6, clearProps: "opacity,visibility,transform" }); }
+    if (name === "ask") setTimeout(() => $("msg").focus({ preventScroll: true }), 60);
+    if (name === "notes") setTimeout(() => $("padT").focus({ preventScroll: true }), 60); };
+  if (old) conceal($(SLOT[old][0]), show); else show();
+}
+function setCall(v){ pref.call = v; savePrefs(); tab($("tCall"), v);
+  if (v){ reveal($("pCall")); sizeSig(); list.scrollTop = list.scrollHeight; } else conceal($("pCall")); }
+$("tCall").onclick = () => setCall(!pref.call);
+$("tAsk").onclick = () => openSlot(slot === "ask" ? null : "ask");
+$("tNotes").onclick = () => openSlot(slot === "notes" ? null : "notes");
+$("tSet").onclick = () => openSlot(slot === "set" ? null : "set");
+document.querySelectorAll("[data-x]").forEach(b => b.onclick = () => b.dataset.x === "call" ? setCall(false) : openSlot(null));
+$("quit").onclick = () => { const a = api(); if (a) a.close(); else toast("No programa, isso fecha o tradutor"); };
+
+/* ---------- linha de sinal (canvas): o som da call, desenhado em código ---------- */
+const sig = $("sig"), sx = sig.getContext("2d");
+const S = { w: 0, h: 46, amp: 0, level: 0, idle: 0, think: 0, grey: 0, hover: 0, mx: -999, pulses: [] };
+function sizeSig(){ const d = Math.min(2, devicePixelRatio || 1); S.w = sig.clientWidth; if (!S.w) return; sig.width = S.w * d; sig.height = S.h * d; sx.setTransform(d, 0, 0, d, 0, 0); }
+new ResizeObserver(sizeSig).observe(sig);
+function pulse(){ if (!reduce) S.pulses.push({ t: performance.now() }); }
+sig.addEventListener("pointermove", e => { S.mx = e.offsetX; gsap.to(S, { hover: 1, duration: .3, overwrite: "auto" }); });
+sig.addEventListener("pointerleave", () => gsap.to(S, { hover: 0, duration: .8, overwrite: "auto" }));
+function drawSig(){
+  const { w, h } = S, mid = h / 2, now = performance.now(), t = now / 1000;
+  if (!w || !pref.call) return;
+  S.amp += (S.level - S.amp) * .16;                         // amortece o nível que chega 10x por segundo
+  sx.clearRect(0, 0, w, h);
+  const A = S.idle * (1 + S.amp * 17), [r, g, b] = C.accent;
+  S.pulses = S.pulses.filter(p => now - p.t < 900);
+  const y = (x, ph, k) => {
+    const u = x / w, env = Math.pow(Math.sin(Math.PI * u), 1.3);      // as pontas ficam presas
+    let v = A * k * env * (Math.sin(u * 13 + t * 5.2 + ph) * .55 + Math.sin(u * 29 - t * 7.1 + ph * 1.7) * .3 + Math.sin(u * 53 + t * 11 + ph) * .15);
+    if (S.hover > .01) v -= S.hover * 6 * k * Math.exp(-((x - S.mx) ** 2) / 900);          // o mouse levanta a linha
+    for (const p of S.pulses){ const q = (now - p.t) / 900, px = q * w; v -= 11 * k * (1 - q) * Math.exp(-((x - px) ** 2) / 500); }
+    if (S.think > .01){ const tx = w * (.5 + .46 * Math.sin(t * 2.6)); v -= S.think * 8 * k * Math.exp(-((x - tx) ** 2) / 700); }
+    return mid + v;
+  };
+  const stroke = (ph, k, alpha, lw) => {
+    sx.beginPath(); for (let x = 0; x <= w; x += 2) x ? sx.lineTo(x, y(x, ph, k)) : sx.moveTo(0, y(0, ph, k));
+    const gr = sx.createLinearGradient(0, 0, w, 0), col = a => `rgba(${r},${g},${b},${a})`;
+    gr.addColorStop(0, col(0)); gr.addColorStop(.12, col(alpha)); gr.addColorStop(.88, col(alpha)); gr.addColorStop(1, col(0));
+    sx.strokeStyle = gr; sx.lineWidth = lw; sx.stroke();
+  };
+  sx.beginPath(); sx.moveTo(18, mid); sx.lineTo(w - 18, mid); sx.strokeStyle = C.line; sx.lineWidth = 1;
+  sx.setLineDash(S.idle < .5 ? [2, 5] : []); sx.globalAlpha = 1 - S.idle * .75; sx.stroke(); sx.setLineDash([]); sx.globalAlpha = 1;
+  const live = Math.max(S.idle, S.hover * .6, S.pulses.length ? 1 : 0, S.think) * (1 - S.grey * .7);
+  if (live > .01){ stroke(1.3, .55, .16 * live, 1); stroke(.6, .8, .34 * live, 1); stroke(0, 1, live, 1.5); }
+}
+gsap.ticker.add(drawSig);
+
+/* ---------- texto que troca rolando ---------- */
+function rollText(el, t){
+  if (el.textContent === t) return;
+  if (reduce){ el.textContent = t; return; }
+  gsap.killTweensOf(el);
+  gsap.to(el, { yPercent: -100, duration: .2, ease: "power2.in", onComplete: () => { el.textContent = t; gsap.fromTo(el, { yPercent: 100 }, { yPercent: 0, duration: .45 }); } });
+}
+
+/* ---------- a call ---------- */
+let items = [], cur = null, curEl = null, liveEl = null, liveN = 0;
+const words = t => (t || "").split(/(\s+)/).filter(Boolean).map(w => /^\s+$/.test(w) ? " " : `<span class="w"><span class="wi">${esc(w)}</span></span>`).join("");
+function row(it, cls){
+  const [a, b] = texts(it);
+  const r = document.createElement("div");
+  r.className = "row " + (cls || "") + (it.mine ? " mine" : "");
+  r.innerHTML = `<div class="meta"><span>${it.mine ? "você" : esc((it.t || "").slice(0, 5))}</span><em class="cpy">clica pra copiar o inglês</em><em class="nt">+ anotar</em></div><div class="a">${esc(a)}</div><div class="b">${esc(b)}</div>`;
+  r.querySelector(".nt").onclick = e => { e.stopPropagation(); addNote(it); };
+  r.onclick = () => { if (r.classList.contains("cur")) return; copy(it.en); pulse();
+    if (!reduce) gsap.fromTo(r, { x: 8 }, { x: 0, duration: .6, ease: "elastic.out(1,.5)", clearProps: "transform" }); };
+  return r;
+}
+function ages(){ const rs = list.querySelectorAll(".row:not(.live)"); rs.forEach((r, i) => r.classList.toggle("prev", i === rs.length - 2)); }
+function dropLive(){ if (liveEl){ liveEl.remove(); liveEl = null; } liveN = 0; }
+const snap = () => new Map([...list.querySelectorAll(".row")].map(el => [el, el.getBoundingClientRect()]));
+/* FLIP: mede antes, muda o layout, e anima cada fala do lugar antigo pro novo (a atual encolhe pra virar histórico) */
+function flip(first, shrink){
+  list.scrollTop = list.scrollHeight;
+  if (reduce || !pref.call) return;
+  first.forEach((f, el) => { if (!el.isConnected) return; const l = el.getBoundingClientRect(), sc = el === shrink && l.height > 0;
+    const dy = sc ? f.bottom - l.bottom : f.top - l.top;
+    const from = { y: dy }; if (sc) from.scale = Math.max(.6, Math.min(1.7, f.height / l.height));
+    if (Math.abs(dy) < .5 && !from.scale) return;
+    gsap.fromTo(el, from, { y: 0, scale: 1, duration: .75, ease: "expo.out", clearProps: "transform", overwrite: true }); });
+}
+function setCurrent(it, anim){
+  const first = anim ? snap() : null, old = curEl, hadLive = !!liveEl;
+  $("empty") && $("empty").remove();
+  dropLive();
+  if (curEl) curEl.classList.remove("cur");
+  cur = it; curEl = row(it, "cur");
+  list.appendChild(curEl); ages();
+  if (!anim){ list.scrollTop = list.scrollHeight; return; }
+  flip(first, old); pulse();
+  if (reduce) return;
+  // velocidade (LAST 22/11): se a fala ja estava aparecendo ao vivo, nao reanima as palavras; so troca o texto
+  if (hadLive){ gsap.from(curEl.querySelectorAll(".b"), { autoAlpha: .4, duration: .2, clearProps: "all" }); return; }
+  const a = curEl.querySelector(".a"); a.innerHTML = words(texts(it)[0]);
+  const ws = a.querySelectorAll(".wi");
+  gsap.from(ws, { yPercent: 110, duration: .25, stagger: Math.min(.015, .2 / Math.max(1, ws.length)), clearProps: "all" });
+  gsap.from(curEl.querySelectorAll(".meta,.b"), { autoAlpha: 0, duration: .2, clearProps: "all" });
+}
+function setLive(it){
+  const fresh = !liveEl, first = fresh ? snap() : null;
+  $("empty") && $("empty").remove();
+  const [a, b] = texts(it);
+  if (fresh){
+    liveEl = document.createElement("div"); liveEl.className = "row cur live"; list.appendChild(liveEl);
+    if (curEl) curEl.classList.remove("cur"), curEl.classList.add("prev");
+  }
+  liveEl.innerHTML = `<div class="meta"><span>agora</span></div><div class="a">${words(a)}<span class="caret"></span></div><div class="b">${esc(b)}</div>`;
+  if (fresh) flip(first, curEl); else list.scrollTop = list.scrollHeight;
+  const ws = [...liveEl.querySelectorAll(".a .wi")];
+  if (!reduce && ws.length > liveN) gsap.from(ws.slice(liveN), { yPercent: 105, duration: .18, stagger: .012, clearProps: "all" });
+  liveN = ws.length;
+}
+const emptyHtml = () => paused
+  ? '<div class="empty" id="empty"><h1>Liga quando a call começar.</h1><p>Ele ouve o que sai no teu fone e traduz pro português.</p><button class="btn" id="startBtn">Começar a captar</button></div>'
+  : '<div class="empty" id="empty"><h1>Esperando alguém falar em inglês.</h1><p>A tradução aparece aqui. A linha embaixo mexe com o som.</p></div>';
+function rebuild(){
+  list.innerHTML = ""; cur = curEl = liveEl = null; liveN = 0;
+  if (!items.length){ list.innerHTML = emptyHtml();
+    const s = $("startBtn"); if (s) s.onclick = () => fetch("/pause", { method: "POST", body: JSON.stringify({ paused: false }) });
+    if (!reduce) gsap.from("#empty > *", { autoAlpha: 0, y: 8, duration: .6, stagger: .08, clearProps: "all" });
+    return; }
+  items.slice(0, -1).forEach(it => list.appendChild(row(it)));
+  setCurrent(items[items.length - 1], false);
+}
+list.addEventListener("wheel", e => { if (!e.ctrlKey) return; e.preventDefault();   // Ctrl + rodinha muda a letra
+  pref.fs = Math.max(17, Math.min(34, pref.fs + (e.deltaY < 0 ? 1 : -1))); applyPrefs(); list.scrollTop = list.scrollHeight; }, { passive: false });
+
+/* ---------- respostas (dentro do painel Responder) ---------- */
+function dock(title, hint){ openSlot("ask"); $("dh").style.display = "flex"; $("dockT").textContent = title; $("dockH").textContent = hint || ""; return $("dockBody"); }
+function closeDock(){ $("dh").style.display = "none"; $("dockBody").innerHTML = ""; }
+const dockHas = () => slot === "ask" && !!$("dockBody").querySelector(".sg");
+let busy = false;
+function setBusy(v){ busy = v; $("suggest").classList.toggle("busy", v); rollText($("sugL"), v ? "Pensando" : "Sugerir resposta");
+  gsap.to(S, { think: v ? 1 : 0, duration: .5, overwrite: "auto" }); }   // enquanto pensa, um pulso varre a linha de sinal
+async function askSuggest(){
+  if (!cur){ toast("Ainda não tem fala pra responder"); return; }
+  if (busy) return; openSlot("ask"); setBusy(true); $("suggest").blur();
+  const r = await fetch("/suggest", { method: "POST", body: JSON.stringify({ id: cur.id }) }).then(r => r.json()).catch(() => null);
+  setBusy(false);
+  if (!r || r.error){ dock("Respostas", "").innerHTML = `<div class="note">${esc((r && r.error) || "Não deu pra gerar agora. Tenta de novo.")}</div>`; return; }
+  if (r.off){ dock("Respostas", "").innerHTML = '<div class="note">As respostas estão desligadas. Liga em Ajustes.</div>'; return; }
+  showSugs(r.items || []);
+}
+function sgRow(n, en, sub){
+  const b = document.createElement("button"); b.className = "sg"; if (n) b.dataset.n = n;
+  b.innerHTML = `<span class="k mono">${n ? n : "→"}</span><span class="tx"><span class="m"><span class="e">${esc(en)}</span></span><span class="m"><span class="p">${esc(sub)}</span></span></span><span class="cp"><span>copiar</span></span>`;
+  b.onclick = () => { copy(en, true); flash(b); };
+  return b;
+}
+function fillDock(title, hint, rows){
+  const body = dock(title, hint); body.innerHTML = "";
+  rows.forEach(r => body.appendChild(r));
+  const hi = document.createElement("div"); hi.className = "hi"; body.prepend(hi);
+  sgs().forEach((b, i) => b.addEventListener("pointerenter", () => selectSg(i, true)));
+  if (!reduce){ // cada linha sobe de dentro da própria máscara
+    gsap.from(body.querySelectorAll(".e,.p"), { yPercent: 110, duration: .75, stagger: .05, clearProps: "all" });
+    gsap.from(body.querySelectorAll(".k"), { autoAlpha: 0, x: -6, duration: .5, stagger: .1, clearProps: "all" }); }
+  requestAnimationFrame(() => selectSg(0, false)); pulse();
+}
+function showSugs(sugs){
+  if (!sugs.length){ dock("Respostas", "").innerHTML = '<div class="note">Não veio nenhuma resposta. Tenta de novo.</div>'; return; }
+  fillDock("Respostas", "↑ ↓ e Enter copia, ou Ctrl+Shift+1 2 3", sugs.map((s, i) => sgRow(i + 1, s.en, s.pt)));
+}
+let sel = 0;
+function sgs(){ return [...$("dockBody").querySelectorAll(".sg")]; }
+function selectSg(i, anim){
+  const bs = sgs(), hi = $("dockBody").querySelector(".hi"); if (!bs.length || !hi) return;
+  sel = (i + bs.length) % bs.length;
+  bs.forEach((b, k) => b.classList.toggle("sel", k === sel));
+  const b = bs[sel];
+  gsap.to(hi, { y: b.offsetTop, height: b.offsetHeight, autoAlpha: 1, duration: anim && !reduce ? .45 : 0, overwrite: true });
+  b.scrollIntoView({ block: "nearest" });
+}
+function flash(b){ const cp = b.querySelector(".cp span"); b.classList.add("flash"); rollText(cp, "copiado"); pulse();
+  setTimeout(() => { b.classList.remove("flash"); rollText(cp, "copiar"); }, 1400);
+  if (!reduce){ const hi = $("dockBody").querySelector(".hi"), [r, g, bl] = rgb(css("--crown"));
+    gsap.fromTo(hi, { backgroundColor: `rgba(${r},${g},${bl},.28)` }, { backgroundColor: css("--rise"), duration: .8, clearProps: "backgroundColor" });
+    gsap.fromTo(b.querySelector(".tx"), { x: 8 }, { x: 0, duration: .7, ease: "elastic.out(1,.5)" }); } }
+$("suggest").onclick = askSuggest;
+
+/* ---------- botões respondem ao clique; as abas puxam de leve pro mouse ---------- */
+if (!reduce){ let pressed = null; const SEL = ".ib,.btn,.ghost,.sw,.chip,.send,.tb,.xp,#pause";
+  document.addEventListener("pointerdown", e => { const b = e.target.closest(SEL); if (!b) return; pressed = b; gsap.to(b, { scale: .9, duration: .1, overwrite: "auto" }); });
+  const up = () => { if (!pressed) return; gsap.to(pressed, { scale: 1, duration: .6, ease: "elastic.out(1,.45)", overwrite: "auto" }); pressed = null; };
+  document.addEventListener("pointerup", up); document.addEventListener("pointercancel", up);
+  document.querySelectorAll(".tb").forEach(c => { const ic = c.querySelector("svg"), mx = gsap.quickTo(ic, "x", { duration: .35, ease: "power3.out" }), my = gsap.quickTo(ic, "y", { duration: .35, ease: "power3.out" });
+    c.addEventListener("pointermove", e => { const r = c.getBoundingClientRect(); mx((e.clientX - r.left - r.width / 2) * .14); my((e.clientY - r.top - r.height / 2) * .18 - 2); });
+    c.addEventListener("pointerleave", () => gsap.to(ic, { x: 0, y: 0, duration: .8, ease: "elastic.out(1,.4)", overwrite: "auto" })); }); }
+
+/* ---------- conexão ---------- */
+let paused = true, skipT;
+const LANGS = { pt: "português", es: "espanhol", fr: "francês", it: "italiano", de: "alemão", ja: "japonês" };
+const stateText = () => paused ? "desligada" : "ouvindo";
+const ring = reduce ? null : gsap.fromTo("#pause i", { scale: 1, opacity: .7 }, { scale: 1.9, opacity: 0, duration: 1.4, repeat: -1, ease: "power1.out", paused: true, immediateRender: false });
+function connect(){
+  const es = new EventSource("/events");
+  es.onopen = () => rollText($("stt"), stateText());
+  es.onerror = () => rollText($("stt"), "reconectando");
+  es.onmessage = e => {
+    const m = JSON.parse(e.data);
+    switch (m.type){
+      case "hello": items = m.history || []; setPaused(m.paused, true); rebuild(); break;
+      case "partial": setLive(m); break;
+      case "drop": if (liveEl){ const f = snap(); dropLive(); if (curEl) curEl.classList.add("cur"), curEl.classList.remove("prev"); flip(f, null); } break;
+      case "final": items.push(m); setCurrent(m, true); if (!m.mine){ topicN++; topicAt = Date.now(); } break;
+      case "level": S.level = paused ? 0 : m.v; break;
+      case "paused": setPaused(m.v); break;
+      case "config": setIa(m); break;
+      case "only_en": setOnlyEn(m.v); break;
+      case "ctx": setCtx(m.v); break;
+      case "speed": setSpeed(m.v); break;
+      case "skip": if (!paused){ rollText($("stt"), "ignorando " + (LANGS[m.lang] || "outra língua")); gsap.to(S, { grey: 1, duration: .3 });
+        clearTimeout(skipT); skipT = setTimeout(() => { gsap.to(S, { grey: 0, duration: .6 }); if (!paused) rollText($("stt"), "ouvindo"); }, 2500); } break;
+      case "suggest_now": askSuggest(); break;
+      case "toast": toast(m.text); break;
+      case "update_progress": $("updA").textContent = "Baixando " + Math.round(m.v * 100) + "%"; break;
+      case "capture": segSet("hideSeg", m.v ? "1" : "0", true); break;
+      case "reset": items = []; topicN = 0; setBusy(false); closeDock(); $("msg").value = ""; rebuild(); pulse(); toast("Chat apagado"); break;
+      case "status": case "active": if (pOpen) loadDevices(); break;
+      case "copied": { toast("Resposta " + m.n + " copiada"); const b = document.querySelector(`.sg[data-n="${m.n}"]`); if (b){ selectSg(m.n - 1, true); flash(b); } break; }
+      case "opacity": $("op").value = Math.round(m.v * 100); toast("Transparência " + Math.round(m.v * 100) + "%"); break;
+      case "error": toast(m.msg); break;
+    }
+  };
+}
+function setPaused(v, first){ const ch = paused !== !!v; paused = !!v;
+  document.body.classList.toggle("capt", !paused);
+  $("pause").title = (paused ? "Começar a captar" : "Parar de captar") + " (Ctrl+Shift+L)";
+  rollText($("stt"), stateText());
+  if (ring){ if (paused){ ring.pause(); gsap.set("#pause i", { opacity: 0 }); } else ring.play(); }
+  gsap.to(S, { idle: paused ? 0 : 1, duration: reduce ? 0 : 1.1, ease: "power3.out", overwrite: "auto" });   // a linha "acende" ao ligar
+  if (!paused && ch) pulse();
+  if (ch && !first && !reduce) gsap.fromTo("#pause", { scale: .5 }, { scale: 1, duration: .7, ease: "elastic.out(1,.45)" });
+  if (ch && !first && $("empty")) rebuild(); }
+$("pause").onclick = () => fetch("/pause", { method: "POST", body: JSON.stringify({ paused: !paused }) });
+
+/* ---------- ajustes ---------- */
+document.querySelectorAll("#mainSeg button").forEach(b => b.onclick = () => { pref.main = b.dataset.v; applyPrefs(true); rebuild(); });
+document.querySelectorAll("#secSeg button").forEach(b => b.onclick = () => { pref.sec = b.dataset.v; applyPrefs(true); });
+/* menu lateral dos ajustes: Geral · Aparência · Respostas · Atalhos */
+const PAGES = { geral: ["Geral", "Call, captação e áudio"], visual: ["Aparência", "Temas, cores e letra"], ia: ["Respostas", "Qual IA sugere e o contexto da call"], keys: ["Atalhos", "Funcionam com o Discord na frente"] };
+const GROUPS = { visual: ["themeList", "glassSeg", "sws", "op", "fs", "mainSeg", "secSeg", "topSeg", "restore"], ia: ["notes", "iaSeg", "meName", "ctxFile", "termsBox"], keys: ["keysBox"] };
+/* perfil: nome, contexto fixo e termos de cada pessoa (ficam só no PC dela) */
+{ let pT; const savePerfil = body => { clearTimeout(pT); pT = setTimeout(() => fetch("/perfil", { method: "POST", body: JSON.stringify(body()) }).catch(() => toast("Não deu pra salvar")), 600); };
+  fetch("/perfil").then(r => r.json()).then(p => { $("meName").value = p.nome || ""; $("ctxFile").value = p.contexto || ""; $("termsBox").value = p.termos || ""; }).catch(() => {});
+  $("meName").oninput = () => savePerfil(() => ({ nome: $("meName").value }));
+  $("ctxFile").oninput = () => savePerfil(() => ({ contexto: $("ctxFile").value }));
+  $("termsBox").oninput = () => savePerfil(() => ({ termos: $("termsBox").value })); }
+/* versão nova no GitHub: aparece uma pílula embaixo da barra com o botão de atualizar */
+fetch("/update").then(r => r.json()).then(u => { if (!u || !u.nova) return;
+  const b = $("upd"); b.style.display = "flex"; $("updT").textContent = "Versão " + u.nova + " disponível"; shape();
+  if (!reduce) gsap.from(b, { autoAlpha: 0, duration: .6 });
+  b.onclick = async () => { if (b.dataset.busy) return;
+    if (!u.url){ window.open(u.pagina, "_blank"); return; }
+    b.dataset.busy = "1"; $("updA").textContent = "Baixando…";
+    const r = await fetch("/update", { method: "POST", body: "{}" }).then(r => r.json()).catch(() => null);
+    if (!r || r.error){ delete b.dataset.busy; $("updA").textContent = "Atualizar"; toast((r && r.error) || "Não deu pra atualizar"); }
+    else $("updA").textContent = "Abrindo o instalador…"; }; }).catch(() => {});
+document.querySelectorAll("#sb .pr").forEach(r => { r.dataset.g = "geral"; });   // o que não estiver na lista fica em Geral
+Object.entries(GROUPS).forEach(([g, ids]) => ids.forEach(id => { const el = $(id); if (el) el.closest(".pr").dataset.g = g; }));
+function setPg(p, anim){
+  $("sb").dataset.pg = p; $("sb").scrollTop = 0;
+  document.querySelectorAll("#snav button").forEach(b => b.classList.toggle("on", b.dataset.pg === p));
+  $("pgT").textContent = PAGES[p][0]; $("pgS").textContent = PAGES[p][1];
+  Object.keys(segVal).forEach(k => segSet(k, segVal[k], false));   // os seletores só medem certo quando estão visíveis
+  if (anim && !reduce){ gsap.from(`#sb .pr[data-g="${p}"]`, { autoAlpha: 0, x: 16, stagger: .04, duration: .55, clearProps: "opacity,visibility,transform" });
+    gsap.from(".shead > *", { autoAlpha: 0, y: 6, stagger: .05, duration: .45, clearProps: "opacity,visibility,transform" }); }
+}
+document.querySelectorAll("#snav button").forEach(b => b.onclick = () => setPg(b.dataset.pg, true));
+/* temas em lista, com "Ativo" / "Aplicar" */
+const THEMES = [["quente", "Preto", "padrão", "#0b0b0d", "#f5f5f4"], ["grafite", "Grafite", "", "#17181b", "#f1f3f5"], ["claro", "Claro", "", "#f4f2ec", "#1a1814"]];
+function renderThemes(){
+  const box = $("themeList"); if (!box) return; box.innerHTML = "";
+  THEMES.forEach(([id, n, tag, c1, c2]) => { const on = pref.theme === id, r = document.createElement("div"); r.className = "th" + (on ? " on" : "");
+    r.innerHTML = `<i style="background:${c1}"></i><i style="background:${c2}"></i><b>${n}${tag ? `<small>${tag}</small>` : ""}</b><button>${on ? "Ativo" : "Aplicar"}</button>`;
+    r.querySelector("button").onclick = () => { if (pref.theme === id) return; pref.theme = id; applyPrefs(true); pulse(); };
+    box.appendChild(r); });
+}
+/* fundo transparente ou sólido: a janela inteira fica um pouco vazada (dá pra ver o que está atrás) */
+function applyGlass(){ const a = api(), v = pref.glass ? .82 : 1;
+  $("glassHint").textContent = pref.glass ? "Dá pra ver um pouco do que está atrás" : "Painéis totalmente pretos";
+  if (a){ a.set_opacity(v); $("op").value = Math.round(v * 100); } }
+document.querySelectorAll("#glassSeg button").forEach(b => b.onclick = () => { pref.glass = b.dataset.v === "1"; applyPrefs(true); applyGlass(); });
+$("restore").onclick = () => { Object.assign(pref, { fs: 22, main: "pt", sec: "1", accent: "#ffd200", theme: "quente", glass: false });
+  applyPrefs(true); applyGlass(); rebuild(); pulse(); toast("Padrões restaurados"); };
+$("fs").oninput = e => { pref.fs = +e.target.value; applyPrefs(); list.scrollTop = list.scrollHeight; };
+$("sens").onchange = e => fetch("/sensitivity", { method: "POST", body: JSON.stringify({ v: [0, .012, .009, .007, .0055, .004, .003, .0024, .0018, .0014, .001, .0008, .0006][+e.target.value] }) });
+function resetChat(){ fetch("/reset", { method: "POST", body: "{}" }); }
+let armed = 0;
+$("reset").onclick = () => { // 2 cliques pra não apagar sem querer
+  if (Date.now() - armed < 2500){ armed = 0; resetChat(); return; }
+  armed = Date.now(); toast("Clica de novo pra apagar o chat");
+  if (!reduce) gsap.fromTo("#reset svg", { rotate: 0 }, { rotate: -360, duration: .8, transformOrigin: "50% 50%" });
+};
+$("clear").onclick = resetChat;
+/* qual IA sugere: a chave fica só neste PC e nunca volta pra página */
+let iaState = { ia: "off", ias: [] };
+function setIa(c){
+  if (c && c.ias) iaState = c;
+  const v = iaState.ia, p = iaState.ias.find(x => x.id === v);
+  segSet("iaSeg", p ? v : "off", pOpen);
+  $("iaBox").style.display = p ? "flex" : "none";
+  if (!p) return;
+  $("iaSt").className = "iaSt " + (p.tem_chave ? "ok" : "no");
+  $("iaSt").textContent = p.tem_chave ? `Chave do ${p.nome} já está neste PC. Pronto pra usar.` : `Falta a chave da API do ${p.nome}.`;
+  $("iaKey").value = ""; $("iaKey").placeholder = p.tem_chave ? "Colar outra chave (opcional)" : `Cola aqui a chave da API do ${p.nome}`;
+  if (document.activeElement !== $("iaModel")) $("iaModel").value = p.model;
+}
+const postIa = (url, body) => fetch(url, { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(setIa).catch(() => toast("Não deu pra salvar"));
+document.querySelectorAll("#iaSeg button").forEach(b => b.onclick = () => postIa("/ia", { ia: b.dataset.v }));
+$("iaSave").onclick = () => { const k = $("iaKey").value.trim(); if (!k) return toast("Cola a chave primeiro");
+  postIa("/ia_key", { ia: iaState.ia, key: k }).then(() => toast("Chave salva neste PC")); };
+$("iaKey").onkeydown = e => { if (e.key === "Enter") $("iaSave").click(); };
+$("iaModel").onchange = () => postIa("/ia_key", { ia: iaState.ia, model: $("iaModel").value });
+function setOnlyEn(v){ segSet("capSeg", v ? "1" : "0", pOpen);
+  $("capHint").textContent = v ? "Fala em português ou outra língua é ignorada" : "Tudo que tocar é tratado como inglês"; }
+document.querySelectorAll("#capSeg button").forEach(b => b.onclick = () =>
+  fetch("/only_en", { method: "POST", body: JSON.stringify({ v: b.dataset.v === "1" }) }).then(r => r.json()).then(r => setOnlyEn(r.only_en)).catch(() => toast("Não deu pra salvar")));
+const SPD_HINT = { real: "Aparece na hora. Não confere a língua, então pode errar mais",
+  equil: "Rápido e confere se é inglês", preciso: "Mais lento, transcreve com mais capricho" };
+function setSpeed(v){ v = SPD_HINT[v] ? v : "equil"; segSet("spdSeg", v, pOpen); $("spdHint").textContent = SPD_HINT[v]; }
+document.querySelectorAll("#spdSeg button").forEach(b => b.onclick = () =>
+  fetch("/speed", { method: "POST", body: JSON.stringify({ v: b.dataset.v }) }).then(r => r.json()).then(r => setSpeed(r.speed)).catch(() => toast("Não deu pra salvar")));
+function setCtx(v){ segSet("ctxSeg", v === "comum" ? "comum" : "crown", pOpen);
+  $("ctxHint").textContent = v === "comum" ? "Sem termos de trabalho, pra papo normal" : "Usa o teu contexto, nomes e termos de trabalho"; }
+document.querySelectorAll("#ctxSeg button").forEach(b => b.onclick = () =>
+  fetch("/ctx", { method: "POST", body: JSON.stringify({ v: b.dataset.v }) }).then(r => r.json()).then(r => setCtx(r.ctx)).catch(() => toast("Não deu pra salvar")));
+let nT; $("notes").oninput = () => { clearTimeout(nT); nT = setTimeout(() => fetch("/notes", { method: "POST", body: JSON.stringify({ text: $("notes").value }) }), 500); };
+async function loadDevices(){
+  const r = await fetch("/devices").then(r => r.json()).catch(() => null); if (!r) return;
+  const box = $("devs"); box.innerHTML = ""; const c = r.current || "auto";
+  [{ v: "auto", n: "Automático", s: "Fone ou caixa, o que estiver tocando" }]
+    .concat(r.devices.map(n => ({ v: n, n, s: n === r.default ? "Saída padrão do Windows" : "" })))
+    .concat((r.mics || []).map(n => ({ v: "mic:" + n, n: "Microfone · " + n, s: "Fala em PT e vira inglês" })))
+    .forEach(o => {
+      const b = document.createElement("button");
+      b.className = "dev" + (c === o.v ? " sel" : "");
+      b.innerHTML = `<span class="r"></span><span>${esc(o.n)}${o.s ? `<small>${esc(o.s)}</small>` : ""}</span>${c === "auto" && r.active === o.v ? '<span class="lv">ativo</span>' : ""}`;
+      b.onclick = () => { fetch("/device", { method: "POST", body: JSON.stringify({ device: o.v === "auto" ? null : o.v }) });
+        box.querySelectorAll(".dev").forEach(x => x.classList.remove("sel")); b.classList.add("sel"); };
+      box.appendChild(b);
+    });
+}
+
+/* ---------- bloco de notas ---------- */
+let padT_;
+function padSave(){ rollText($("padS"), "Salvando"); clearTimeout(padT_);
+  padT_ = setTimeout(() => fetch("/pad", { method: "POST", body: JSON.stringify({ text: $("padT").value }) })
+    .then(() => rollText($("padS"), "Salvo"), () => rollText($("padS"), "Não salvou")), 500); }
+function addNote(it){
+  const t = $("padT"), c = t.value.replace(/\s+$/, "");
+  t.value = (c ? c + "\n\n" : "") + `[${(it.t || "").slice(0, 5)}] ${it.en}\n${it.pt}\n`;
+  padSave(); openSlot("notes"); setTimeout(() => { t.scrollTop = t.scrollHeight; }, 80); toast("Anotado");
+}
+$("padT").oninput = padSave;
+$("padCopy").onclick = () => copy($("padT").value);
+let padArm = 0;
+$("padClear").onclick = () => { if (Date.now() - padArm < 2500){ padArm = 0; $("padT").value = ""; padSave(); return; }
+  padArm = Date.now(); toast("Clica de novo pra limpar as notas"); };
+fetch("/pad").then(r => r.json()).then(r => { $("padT").value = r.text || ""; }).catch(() => {});
+/* anotar sozinho (LAST 22/11): de tempos em tempos a IA escolhida em Ajustes lê as falas novas e escreve os tópicos no bloco.
+   Dispara com 6 falas novas, ou com 3 depois de 40 s de silêncio. Só o que é concreto: decisão, tarefa, prazo, nome. */
+let topicN = 0, topicAt = 0, topicLast = 0, topicBusy = false;
+function autoLabel(){ $("padAuto").textContent = "Anotar sozinho: " + (pref.auto === false ? "desligado" : "ligado"); $("padAuto").style.color = pref.auto === false ? "" : "var(--crown-ink)"; }
+async function takeTopics(manual){
+  if (topicBusy) return; topicBusy = true; topicN = 0;
+  if (manual) rollText($("padS"), "Lendo a call");
+  const r = await fetch("/topics", { method: "POST", body: JSON.stringify({ since: topicLast }) }).then(r => r.json()).catch(() => null);
+  topicBusy = false;
+  if (!r || r.error){ if (manual) toast((r && r.error) || "Não deu pra anotar agora"); return; }
+  if (r.off){ if (manual) toast("Liga uma IA em Ajustes pra ele anotar"); return; }
+  if (r.last) topicLast = r.last;
+  if (!r.items || !r.items.length){ if (manual) rollText($("padS"), "Nada novo pra anotar"); return; }
+  const t = $("padT"), c = t.value.replace(/\s+$/, ""), hh = new Date().toTimeString().slice(0, 5);
+  t.value = (c ? c + "\n" : "") + r.items.map(i => `• [${hh}] ${i}`).join("\n") + "\n";
+  t.scrollTop = t.scrollHeight; padSave(); pulse();
+  if (!reduce) gsap.fromTo("#tNotes svg", { scale: 1.5, color: css("--crown") }, { scale: 1, color: "", duration: .9, ease: "elastic.out(1,.4)", clearProps: "color,transform" });
+  if (manual) toast(r.items.length === 1 ? "1 tópico anotado" : r.items.length + " tópicos anotados");
+}
+setInterval(() => { if (pref.auto === false || paused || topicBusy) return;
+  if (topicN >= 6 || (topicN >= 3 && Date.now() - topicAt > 40000)) takeTopics(false); }, 5000);
+$("padAuto").onclick = () => { pref.auto = pref.auto === false; savePrefs(); autoLabel(); toast(pref.auto ? "Vai anotar sozinho" : "Não anota mais sozinho"); };
+$("padNow").onclick = () => takeTopics(true);
+autoLabel();
+
+/* ---------- PT -> EN ---------- */
+async function translate(){
+  const t = $("msg").value.trim(); if (!t) return;
+  const r = await fetch("/reply", { method: "POST", body: JSON.stringify({ text: t }) }).then(r => r.json()).catch(() => null);
+  if (!r) return toast("Não deu pra traduzir");
+  const rows = [sgRow(0, r.informal, "do jeito do Discord · já copiada")];
+  if (r.en && r.en !== r.informal) rows.push(sgRow(0, r.en, "mais formal"));
+  fillDock("Tua frase em inglês", "", rows);
+  copy(r.informal, true); $("msg").select();
+}
+$("msg").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); translate(); } if (e.key === "Escape") $("msg").blur(); };
+$("send").onclick = translate;
+
+/* ---------- utilidades ---------- */
+function toast(t){ const x = $("toast"); x.textContent = t; gsap.killTweensOf(x);
+  gsap.timeline().fromTo(x, { autoAlpha: 0 }, { autoAlpha: 1, duration: .2, ease: "none" }).to(x, { autoAlpha: 0, duration: .3, ease: "none" }, "+=1.4"); }
+function copy(t, quiet){ navigator.clipboard.writeText(t).then(() => quiet || toast("Copiado"), () => toast("Não deu pra copiar")); }
+document.addEventListener("keydown", e => {
+  if (/^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName) || e.ctrlKey || e.altKey) return;
+  if (e.key === "r" || e.key === "R") askSuggest();
+  if (e.key === "n" || e.key === "N"){ e.preventDefault(); openSlot(slot === "notes" ? null : "notes"); }
+  if (e.key === "Escape") openSlot(null);
+  if (e.key === "/"){ e.preventDefault(); openSlot("ask"); }
+  if (dockHas() && (e.key === "ArrowDown" || e.key === "ArrowUp")){ e.preventDefault(); selectSg(sel + (e.key === "ArrowDown" ? 1 : -1), true); }
+  if (dockHas() && e.key === "Enter"){ e.preventDefault(); const b = sgs()[sel]; b && b.click(); }
+  if (["1", "2", "3"].includes(e.key)){ const b = document.querySelector(`.sg[data-n="${e.key}"]`); if (b){ selectSg(+e.key - 1, true); b.click(); } }
+});
+let appReady = false;
+function setupApp(){
+  const a = api(); if (!a || appReady) return; appReady = true;
+  document.body.classList.remove("web");
+  segSet("topSeg", "1", false); applyGlass();
+  $("op").oninput = e => a.set_opacity(e.target.value / 100);
+  document.querySelectorAll("#topSeg button").forEach(b => b.onclick = async () => { let on = await a.toggle_top();
+    if (on !== (b.dataset.v === "1")) on = await a.toggle_top(); segSet("topSeg", on ? "1" : "0", true); });
+  shape(); setTimeout(shape, 300); setTimeout(shape, 1200);
+  // invisivel no print (LAST 22/11: opcao em Ajustes)
+  if (a.get_capture){ $("capRow").style.display = "flex";
+    a.get_capture().then(h => segSet("hideSeg", h ? "1" : "0", false));
+    document.querySelectorAll("#hideSeg button").forEach(b => b.onclick = async () => {
+      const h = await a.set_capture(b.dataset.v === "1"); segSet("hideSeg", h ? "1" : "0", true);
+      toast(h ? "Invisível no print" : "Agora aparece no print"); }); }
+}
+if (!api()) document.body.classList.add("web");
+applyPrefs(); setPg("geral", false); applyGlass(); setCall(pref.call !== false);
+fetch("/config").then(r => r.json()).then(c => { setIa(c); setOnlyEn(c.only_en !== false); setCtx(c.ctx); setSpeed(c.speed); $("notes").value = c.notas || ""; }).catch(() => {});
+window.addEventListener("pywebviewready", setupApp); setupApp();
+document.fonts && document.fonts.ready.then(shape);
+connect();
+</script>
+</body>
+</html>
