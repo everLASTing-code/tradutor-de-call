@@ -11,7 +11,7 @@ Write-Host "Gerando a versao $ver"
 # 1) o programa em pasta (abre rapido; nao descompacta nada a cada abertura)
 & $py -m PyInstaller --noconfirm --clean --windowed --name TradutorDeCall `
   --distpath "$here\dist" --workpath "$here\build" --specpath "$here\build" `
-  --add-data "$here\pagina.html;." --add-data "$here\gsap.min.js;." --add-data "$here\versao.txt;." `
+  --add-data "$here\pagina.html;." --add-data "$here\gsap.min.js;." --add-data "$here\fonts;fonts" --add-data "$here\versao.txt;." `
   --add-data "$here\contexto_padrao.md;." --add-data "$here\termos_padrao.txt;." `
   --hidden-import tradutor --hidden-import janela_win --hidden-import primeira_vez --hidden-import atualizar `
   --collect-data faster_whisper --collect-all ctranslate2 --collect-all onnxruntime `

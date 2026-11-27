@@ -24,3 +24,4 @@ build/
 dist/
 *.spec
 perfil_config.json
+guia/

@@ -4,8 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tradutor de call</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="/fonts/fonts.css" rel="stylesheet">   <!-- fontes junto do programa: abre mais rápido e funciona sem internet -->
 <style>
 /* v6 — barra flutuante (pedido do LAST 22/11, no formato do print que ele mandou):
    pílulas pretas soltas no topo (captar · Ouvir / Responder · Notas / Ajustes) e painéis pretos arredondados embaixo.
@@ -37,13 +36,14 @@ button{cursor:pointer;border:0;background:none}
 .rec{flex-direction:column;justify-content:space-between;width:36px;padding:7px 0;border-radius:18px}
 #pause{width:22px;height:22px;border-radius:50%;background:var(--dim);position:relative;flex:none}
 #pause i{position:absolute;inset:0;border-radius:50%;border:1.5px solid var(--red);opacity:0}
-.capt #pause{background:var(--red)}
+.capt #pause{background:var(--red);box-shadow:0 0 0 calc(var(--lv,0) * 7px) rgba(229,72,77,.28)}   /* o ponto pulsa com o som */
 .grip{width:24px;height:22px;display:grid;place-items:center;color:var(--mute);cursor:grab}
 .grip svg{width:14px;height:14px;pointer-events:none}
 .tb{width:86px;height:60px;border-radius:30px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;
   color:var(--ink);font-size:12.5px;font-weight:600;letter-spacing:.01em;position:relative}
 .tb svg{width:20px;height:20px}
-.tb:hover{color:var(--mute)}
+.tb{transition:background-color .25s ease}
+.tb:hover{background:var(--rise)}
 .tb.on,.tb.on:hover{color:var(--crown-ink)}
 .tb .d{position:absolute;top:10px;right:20px;width:7px;height:7px;border-radius:50%;background:var(--crown-ink);transform:scale(0)}
 .xp{width:36px;height:36px;border-radius:50%;padding:0;justify-content:center;color:var(--mute)}
@@ -54,7 +54,10 @@ button{cursor:pointer;border:0;background:none}
   font-size:13px;font-weight:600;padding:0 14px;text-align:center;visibility:hidden;z-index:5}
 
 /* ---------- painéis ---------- */
-.panel{width:100%;border-radius:16px;display:none;flex-direction:column;overflow:hidden}
+.panel{width:100%;border-radius:16px;display:none;flex-direction:column;overflow:hidden;position:relative}
+/* lendo o histórico: a lista para de pular e aparece este aviso (27/11) */
+.newer{position:absolute;left:50%;bottom:54px;transform:translateX(-50%);height:30px;padding:0 13px;border-radius:15px;background:var(--rise2);color:var(--ink);font-size:12.5px;font-weight:600;display:none;align-items:center;gap:6px;z-index:3;box-shadow:0 0 0 1px var(--line2)}
+.newer b{color:var(--crown-ink);font-weight:700}
 .phd{height:42px;display:flex;align-items:center;padding:0 6px 0 8px;flex:none}
 .phd .grip{width:30px;height:30px}
 .phd b{flex:1;text-align:center;font-size:14px;font-weight:600}
@@ -228,9 +231,11 @@ body.web .apponly{display:none!important}
   <section class="panel" id="pCall" data-shape>
     <div class="phd"><div class="grip pywebview-drag-region" title="Arrastar"><svg viewBox="0 0 14 14" fill="currentColor"><circle cx="4" cy="2" r="1.2"/><circle cx="10" cy="2" r="1.2"/><circle cx="4" cy="7" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="4" cy="12" r="1.2"/><circle cx="10" cy="12" r="1.2"/></svg></div>
       <b>Call<small><span class="roll"><span id="stt">Conectando</span></span></small></b>
+      <button class="ib" id="copyAll" title="Copiar a call inteira (inglês e português)" aria-label="Copiar a call inteira"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/></svg></button>
       <button class="ib" id="reset" title="Apagar o chat e recomeçar" aria-label="Apagar o chat e recomeçar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></button>
       <button class="ib" data-x="call" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <main id="list"></main>
+    <button class="newer" id="newer"><b>↓</b><span id="newerT">Novas falas</span></button>
     <canvas id="sig" aria-hidden="true"></canvas>
   </section>
 
@@ -308,6 +313,8 @@ body.web .apponly{display:none!important}
           <div class="iaRow"><input id="iaKey" type="password" autocomplete="off" spellcheck="false" aria-label="Chave da API"><button class="ghost" id="iaSave">Salvar</button></div>
           <div class="iaRow"><label for="iaModel">Modelo</label><input id="iaModel" class="mono" autocomplete="off" spellcheck="false"></div>
         </div></div>
+      <div class="pr"><div class="l"><b>Motor da tradução</b><span id="tradHint">A IA traduz pelo sentido, com gíria</span></div>
+        <div class="seg" id="tradSeg"><button data-v="ia">IA (melhor)</button><button data-v="local">Offline</button></div></div>
       <div class="pr col"><div class="l"><b>De onde vem o áudio</b></div><div id="devs"></div></div>
       <div class="pr"><div class="l"><b>Apagar o chat e recomeçar</b><span>A call anterior fica salva em transcricoes</span></div><button class="ghost" id="clear">Apagar</button></div>
       <div class="pr col"><div class="l"><b>Atalhos</b><span>Funcionam com o Discord na frente</span></div>
@@ -434,15 +441,23 @@ $("quit").onclick = () => { const a = api(); if (a) a.close(); else toast("No pr
 /* ---------- linha de sinal (canvas): o som da call, desenhado em código ---------- */
 const sig = $("sig"), sx = sig.getContext("2d");
 const S = { w: 0, h: 46, amp: 0, level: 0, idle: 0, think: 0, grey: 0, hover: 0, mx: -999, pulses: [] };
-function sizeSig(){ const d = Math.min(2, devicePixelRatio || 1); S.w = sig.clientWidth; if (!S.w) return; sig.width = S.w * d; sig.height = S.h * d; sx.setTransform(d, 0, 0, d, 0, 0); }
+let sigLast = 0, sigStill = false;
+function sizeSig(){ sigStill = false; const d = Math.min(2, devicePixelRatio || 1); S.w = sig.clientWidth; if (!S.w) return; sig.width = S.w * d; sig.height = S.h * d; sx.setTransform(d, 0, 0, d, 0, 0); }
 new ResizeObserver(sizeSig).observe(sig);
 function pulse(){ if (!reduce) S.pulses.push({ t: performance.now() }); }
 sig.addEventListener("pointermove", e => { S.mx = e.offsetX; gsap.to(S, { hover: 1, duration: .3, overwrite: "auto" }); });
 sig.addEventListener("pointerleave", () => gsap.to(S, { hover: 0, duration: .8, overwrite: "auto" }));
 function drawSig(){
   const { w, h } = S, mid = h / 2, now = performance.now(), t = now / 1000;
-  if (!w || !pref.call) return;
-  S.amp += (S.level - S.amp) * .16;                         // amortece o nível que chega 10x por segundo
+  if (!w || !pref.call || document.hidden) return;
+  if (now - sigLast < 32) return;       // ~30 quadros por segundo bastam pra linha (gasta metade da CPU)
+  sigLast = now;
+  S.amp += (S.level - S.amp) * .3;                          // amortece o nível que chega 10x por segundo
+  $("pause").style.setProperty("--lv", S.amp.toFixed(3));
+  // parada (captação desligada, sem mouse nem pulso): desenha uma vez e não gasta mais nada
+  const still = S.idle < .005 && S.hover < .005 && !S.pulses.length && S.think < .005 && S.grey < .005;
+  if (still && sigStill) return;
+  sigStill = still;
   sx.clearRect(0, 0, w, h);
   const A = S.idle * (1 + S.amp * 17), [r, g, b] = C.accent;
   S.pulses = S.pulses.filter(p => now - p.t < 900);
@@ -481,19 +496,43 @@ const words = t => (t || "").split(/(\s+)/).filter(Boolean).map(w => /^\s+$/.tes
 function row(it, cls){
   const [a, b] = texts(it);
   const r = document.createElement("div");
-  r.className = "row " + (cls || "") + (it.mine ? " mine" : "");
+  r.className = "row " + (cls || "") + (it.mine ? " mine" : ""); r.dataset.id = it.id;
   r.innerHTML = `<div class="meta"><span>${it.mine ? "você" : esc((it.t || "").slice(0, 5))}</span><em class="cpy">clica pra copiar o inglês</em><em class="nt">+ anotar</em></div><div class="a">${esc(a)}</div><div class="b">${esc(b)}</div>`;
   r.querySelector(".nt").onclick = e => { e.stopPropagation(); addNote(it); };
   r.onclick = () => { if (r.classList.contains("cur")) return; copy(it.en); pulse();
     if (!reduce) gsap.fromTo(r, { x: 8 }, { x: 0, duration: .6, ease: "elastic.out(1,.5)", clearProps: "transform" }); };
   return r;
 }
+/* segue a última fala só se a pessoa estiver no fim da lista; se subiu pra ler, mostra "Novas falas" */
+let follow = true, unseen = 0;
+function stick(){
+  if (follow){ list.scrollTop = list.scrollHeight; return true; }
+  unseen++; $("newerT").textContent = unseen > 1 ? unseen + " falas novas" : "Fala nova";
+  const n = $("newer"); if (n.style.display !== "flex"){ n.style.display = "flex"; if (!reduce) gsap.fromTo(n, { autoAlpha: 0, y: 8 }, { autoAlpha: 1, y: 0, duration: .35 }); }
+  return false;
+}
+function hideNewer(){ unseen = 0; const n = $("newer"); if (n.style.display === "flex") gsap.to(n, { autoAlpha: 0, duration: .2, onComplete: () => { n.style.display = "none"; } }); }
+list.addEventListener("scroll", () => { follow = list.scrollHeight - list.scrollTop - list.clientHeight < 40; if (follow) hideNewer(); }, { passive: true });
+$("newer").onclick = () => { follow = true; list.scrollTop = list.scrollHeight; pulse(); hideNewer(); };
+$("copyAll").onclick = () => { if (!items.length) return toast("A call ainda está vazia");
+  copy(items.map(it => `[${(it.t || "").slice(0, 5)}] ${it.mine ? "(você) " : ""}${it.en}\n${it.pt}`).join("\n\n"), true); toast("Call copiada"); pulse(); };
+/* a tradução boa (IA) chega ~0,7 s depois da frase: troca só o texto em português, com um fade curto */
+function fixPt(m){
+  const it = items.find(x => x.id === m.id && !x.mine); if (!it) return;
+  it.pt = m.pt;
+  const el = list.querySelector(`.row[data-id="${m.id}"]:not(.live)`); if (!el) return;
+  const [a, b] = texts(it), A = el.querySelector(".a"), B = el.querySelector(".b");
+  const swap = () => { A.textContent = a; B.textContent = b; };
+  if (reduce || !pref.call){ swap(); return; }
+  const t = pref.main === "en" ? B : A;
+  gsap.to(t, { autoAlpha: .25, duration: .12, onComplete: () => { swap(); gsap.to(t, { autoAlpha: 1, duration: .3, clearProps: "opacity,visibility" }); } });
+}
 function ages(){ const rs = list.querySelectorAll(".row:not(.live)"); rs.forEach((r, i) => r.classList.toggle("prev", i === rs.length - 2)); }
 function dropLive(){ if (liveEl){ liveEl.remove(); liveEl = null; } liveN = 0; }
 const snap = () => new Map([...list.querySelectorAll(".row")].map(el => [el, el.getBoundingClientRect()]));
 /* FLIP: mede antes, muda o layout, e anima cada fala do lugar antigo pro novo (a atual encolhe pra virar histórico) */
 function flip(first, shrink){
-  list.scrollTop = list.scrollHeight;
+  if (!stick()) return;                 // lendo o histórico: não pula nem anima
   if (reduce || !pref.call) return;
   first.forEach((f, el) => { if (!el.isConnected) return; const l = el.getBoundingClientRect(), sc = el === shrink && l.height > 0;
     const dy = sc ? f.bottom - l.bottom : f.top - l.top;
@@ -508,7 +547,7 @@ function setCurrent(it, anim){
   if (curEl) curEl.classList.remove("cur");
   cur = it; curEl = row(it, "cur");
   list.appendChild(curEl); ages();
-  if (!anim){ list.scrollTop = list.scrollHeight; return; }
+  if (!anim){ stick(); return; }
   flip(first, old); pulse();
   if (reduce) return;
   // velocidade (LAST 22/11): se a fala ja estava aparecendo ao vivo, nao reanima as palavras; so troca o texto
@@ -527,7 +566,7 @@ function setLive(it){
     if (curEl) curEl.classList.remove("cur"), curEl.classList.add("prev");
   }
   liveEl.innerHTML = `<div class="meta"><span>agora</span></div><div class="a">${words(a)}<span class="caret"></span></div><div class="b">${esc(b)}</div>`;
-  if (fresh) flip(first, curEl); else list.scrollTop = list.scrollHeight;
+  if (fresh) flip(first, curEl); else stick();
   const ws = [...liveEl.querySelectorAll(".a .wi")];
   if (!reduce && ws.length > liveN) gsap.from(ws.slice(liveN), { yPercent: 105, duration: .18, stagger: .012, clearProps: "all" });
   liveN = ws.length;
@@ -624,6 +663,7 @@ function connect(){
       case "hello": items = m.history || []; setPaused(m.paused, true); rebuild(); break;
       case "partial": setLive(m); break;
       case "drop": if (liveEl){ const f = snap(); dropLive(); if (curEl) curEl.classList.add("cur"), curEl.classList.remove("prev"); flip(f, null); } break;
+      case "pt_fix": fixPt(m); break;
       case "final": items.push(m); setCurrent(m, true); if (!m.mine){ topicN++; topicAt = Date.now(); } break;
       case "level": S.level = paused ? 0 : m.v; break;
       case "paused": setPaused(m.v); break;
@@ -661,7 +701,7 @@ document.querySelectorAll("#mainSeg button").forEach(b => b.onclick = () => { pr
 document.querySelectorAll("#secSeg button").forEach(b => b.onclick = () => { pref.sec = b.dataset.v; applyPrefs(true); });
 /* menu lateral dos ajustes: Geral · Aparência · Respostas · Atalhos */
 const PAGES = { geral: ["Geral", "Call, captação e áudio"], visual: ["Aparência", "Temas, cores e letra"], ia: ["Respostas", "Qual IA sugere e o contexto da call"], keys: ["Atalhos", "Funcionam com o Discord na frente"] };
-const GROUPS = { visual: ["themeList", "glassSeg", "sws", "op", "fs", "mainSeg", "secSeg", "topSeg", "restore"], ia: ["notes", "iaSeg", "meName", "ctxFile", "termsBox"], keys: ["keysBox"] };
+const GROUPS = { visual: ["themeList", "glassSeg", "sws", "op", "fs", "mainSeg", "secSeg", "topSeg", "restore"], ia: ["notes", "iaSeg", "tradSeg", "meName", "ctxFile", "termsBox"], keys: ["keysBox"] };
 /* perfil: nome, contexto fixo e termos de cada pessoa (ficam só no PC dela) */
 { let pT; const savePerfil = body => { clearTimeout(pT); pT = setTimeout(() => fetch("/perfil", { method: "POST", body: JSON.stringify(body()) }).catch(() => toast("Não deu pra salvar")), 600); };
   fetch("/perfil").then(r => r.json()).then(p => { $("meName").value = p.nome || ""; $("ctxFile").value = p.contexto || ""; $("termsBox").value = p.termos || ""; }).catch(() => {});
@@ -719,6 +759,10 @@ $("clear").onclick = resetChat;
 let iaState = { ia: "off", ias: [] };
 function setIa(c){
   if (c && c.ias) iaState = c;
+  segSet("tradSeg", iaState.tradutor === "local" ? "local" : "ia", pOpen);
+  const tn = (iaState.ias.find(x => x.id === iaState.trad_ia) || {}).nome;
+  $("tradHint").textContent = iaState.tradutor === "local" ? "Roda no PC, sem internet. Mais duro com gíria"
+    : tn ? `Frase pronta traduzida pelo ${tn}, pelo sentido e com gíria` : "Escolhe uma IA abaixo e cola a chave (a do Gemini é grátis). Sem chave, fica o offline";
   const v = iaState.ia, p = iaState.ias.find(x => x.id === v);
   segSet("iaSeg", p ? v : "off", pOpen);
   $("iaBox").style.display = p ? "flex" : "none";
@@ -730,6 +774,7 @@ function setIa(c){
 }
 const postIa = (url, body) => fetch(url, { method: "POST", body: JSON.stringify(body) }).then(r => r.json()).then(setIa).catch(() => toast("Não deu pra salvar"));
 document.querySelectorAll("#iaSeg button").forEach(b => b.onclick = () => postIa("/ia", { ia: b.dataset.v }));
+document.querySelectorAll("#tradSeg button").forEach(b => b.onclick = () => postIa("/tradutor", { v: b.dataset.v }));
 $("iaSave").onclick = () => { const k = $("iaKey").value.trim(); if (!k) return toast("Cola a chave primeiro");
   postIa("/ia_key", { ia: iaState.ia, key: k }).then(() => toast("Chave salva neste PC")); };
 $("iaKey").onkeydown = e => { if (e.key === "Enter") $("iaSave").click(); };

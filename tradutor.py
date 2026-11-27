@@ -115,6 +115,7 @@ state = {
     "paused": True,   # abre sem captar; so comeca quando o LAST clicar (pedido 22/11)
     "device": None,          # nome do dispositivo de saida (loopback)
     "device_changed": threading.Event(),
+    "resume": threading.Event(),   # captacao desligada: as saidas de audio ficam fechadas ate ligar (27/11, CPU)
     "level": 0.0,
 }
 clients = []
@@ -258,7 +259,7 @@ def ia_key(conf, ia):
 
 def ia_status(conf=None):
     conf = conf or load_conf()
-    return {"ia": conf.get("ia", "off"),
+    return {"ia": conf.get("ia", "off"), "tradutor": conf.get("tradutor", "ia"), "trad_ia": trad_provider(conf),
             "ias": [{"id": k, "nome": p["nome"], "tem_chave": bool(ia_key(conf, k)),
                      "model": conf.get(k + "_model") or p["model"]} for k, p in PROVIDERS.items()]}
 
@@ -343,7 +344,7 @@ def topics(since_id):
     return {"items": [i.strip() for i in items if i.strip()][:3], "last": last}
 
 
-def ask_ia(prompt, conf=None):
+def ask_ia(prompt, conf=None, temperature=None):
     """Manda o texto pra IA escolhida em Ajustes e devolve a lista que ela respondeu (JSON)."""
     conf = conf or load_conf()
     ia = conf.get("ia", "off")
@@ -382,7 +383,7 @@ def ask_ia(prompt, conf=None):
         models = [conf.get("gemini_model", "gemini-3.5-flash-lite"), "gemini-flash-lite-latest", "gemini-3.1-flash-lite"]
         last_err = None
         for model in dict.fromkeys(models):  # se um estiver lotado (503), tenta o proximo
-            gc = {"responseMimeType": "application/json", "temperature": 0.8}
+            gc = {"responseMimeType": "application/json", "temperature": 0.8 if temperature is None else temperature}
             if model.startswith("gemini-3"):
                 gc["thinkingConfig"] = {"thinkingLevel": "minimal"}
             try:
@@ -412,6 +413,68 @@ def ask_ia(prompt, conf=None):
     if isinstance(data, dict):  # alguns modelos embrulham a lista
         data = next((v for v in data.values() if isinstance(v, list)), [])
     return data if isinstance(data, list) else []
+
+
+# ---------------------------------------------------------------- traducao boa da frase fechada
+# (27/11, amigos do LAST acharam a traducao "muito ruim"; LAST: "melhora sim o motor"). Comparado em call real:
+# o opus-mt local traduz palavra por palavra ("like" -> "como", "wrap it up" -> "envolver", "blast it" -> "explodi-lo");
+# a IA entende girias e o contexto em ~0,7 s. Entao: a previa ao vivo continua local (instantanea) e a frase
+# fechada e trocada pela da IA logo depois. Usa a chave de IA que a pessoa ja colou (a do Gemini e gratis).
+# Sem chave, ou em Ajustes -> "Motor da traducao: Offline", fica a local.
+TRANSLATE_PROMPT = """Translate one line from a live {kind} into natural Brazilian Portuguese, the way a Brazilian \
+would actually say it. Casual, never Portugal Portuguese. It was transcribed live: no punctuation, fillers \
+(um, uh, like, you know) and it may start or end mid-sentence. Drop meaningless fillers, translate idioms and slang \
+by meaning (not word by word), keep names, brands and jargon as they are. Do not add anything that is not in the line.{terms}
+Previous lines (context only, do NOT translate them):
+{prev}
+Line to translate: {line}
+Return ONLY a JSON list with one string: the translation."""
+
+
+def trad_provider(conf):
+    """Qual IA traduz: a escolhida em Ajustes, ou qualquer uma que tenha chave. None = traducao local."""
+    if conf.get("tradutor", "ia") == "local":
+        return None
+    ia = conf.get("ia", "off")
+    if ia in PROVIDERS and ia_key(conf, ia):
+        return ia
+    return next((k for k in PROVIDERS if ia_key(conf, k)), None)
+
+
+def better_pt(en, prev=(), conf=None):
+    """Traducao boa de uma frase em ingles pela IA (ou None: sem chave, desligado ou falhou)."""
+    conf = conf or load_conf()
+    ia = trad_provider(conf)
+    if not ia:
+        return None
+    work = conf.get("contexto", "crown") != "comum"
+    terms = (" Names and terms used in this call: " + PROMPT[:500]) if work and PROMPT else ""
+    prompt = TRANSLATE_PROMPT.format(kind="work call" if work else "conversation between friends", terms=terms,
+                                     prev="\n".join(f"- {p}" for p in prev) or "(none)", line=en)
+    try:
+        data = ask_ia(prompt, {**conf, "ia": ia}, temperature=0.2)
+        pt = next((str(d).strip() for d in data if isinstance(d, str) and str(d).strip()), "")
+        return {"pt": pt, "via": ia} if pt else None
+    except Exception as e:
+        log("traducao pela IA falhou:", repr(e)[:150])
+        return None
+
+
+def fix_pt(item, prev, logfile):
+    """Roda numa thread depois que a frase aparece: troca a traducao local pela da IA e avisa a janela."""
+    t0 = time.time()
+    try:
+        r = better_pt(item["en"], prev)
+        if r and r["pt"] != item["pt"]:
+            log(f"traducao {r['via']} em {time.time() - t0:.1f}s:", r["pt"])
+            item["pt"] = r["pt"]
+            broadcast({"type": "pt_fix", "id": item["id"], "pt": r["pt"]})
+    finally:
+        try:
+            with open(logfile, "a", encoding="utf8") as f:
+                f.write(f"[{item['t']}] {item['en']}\n           {item['pt']}\n\n")
+        except Exception:
+            pass
 
 
 last_sugs = []   # ultimas sugestoes (pros atalhos Ctrl+Shift+1/2/3)
@@ -446,6 +509,7 @@ def auto_suggest(item):
 
 def set_paused(v):
     state["paused"] = bool(v)
+    (state["resume"].clear if state["paused"] else state["resume"].set)()
     broadcast({"type": "paused", "v": state["paused"]})
 
 
@@ -473,13 +537,16 @@ def device_thread(name, out_q, gen):
     """Grava uma saida de audio (loopback) e manda os blocos com o nome dela."""
     import soundcard as sc
     while gen == state["gen"]:
+        if state["paused"]:   # desligado: nao grava nada (antes gastava ~15% de um nucleo parado)
+            state["resume"].wait(1.0)
+            continue
         try:
             if name.startswith("mic:"):  # microfone do LAST (pra testar / falar)
                 mic = sc.get_microphone(name[4:], include_loopback=False)
             else:
                 mic = sc.get_microphone(name, include_loopback=True)
             with mic.recorder(samplerate=SR, channels=1, blocksize=BLOCK) as rec:
-                while gen == state["gen"]:
+                while gen == state["gen"] and not state["paused"]:
                     d = rec.record(numframes=BLOCK).reshape(-1).astype(np.float32)
                     rms = float(np.sqrt(np.mean(d * d))) if d.size else 0.0
                     energy[name] = energy.get(name, 0.0) * 0.8 + rms * 0.2
@@ -697,7 +764,7 @@ def main_loop(in_q, model, en2pt):
                 pre = pre[-3:]
 
         now = time.time()
-        if now - last_level_sent > 0.1:
+        if now - last_level_sent > 0.1 and not state["paused"]:   # desligado: nao manda nivel (a janela fica parada)
             broadcast({"type": "level", "v": round(min(1.0, state["level"] / 0.05), 3)})
             last_level_sent = now
 
@@ -728,8 +795,13 @@ def main_loop(in_q, model, en2pt):
             del history[:-300]
             broadcast(item)
             # sugestoes so quando o LAST clicar (pedido 22/11)
-            with open(logfile, "a", encoding="utf8") as f:
-                f.write(f"[{item['t']}] {en}\n           {pt}\n\n")
+            # traducao da IA por cima da local, sem segurar a fala na tela
+            if det == "en" and not item["mine"]:
+                prev = [h["en"] for h in history[-5:-1] if not h.get("mine")][-3:]
+                threading.Thread(target=fix_pt, args=(item, prev, logfile), daemon=True).start()
+            else:
+                with open(logfile, "a", encoding="utf8") as f:
+                    f.write(f"[{item['t']}] {en}\n           {pt}\n\n")
             log(f"{time.time() - t0:.1f}s |", en, "=>", pt)
         elif now - last_partial >= prev_every and dur > min(0.5, sp["min"]):
             last_partial = now
@@ -769,6 +841,17 @@ class H(BaseHTTPRequestHandler):
             b = PAGE().encode("utf8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+        elif self.path.startswith("/fonts/") and re.fullmatch(r"/fonts/[\w.-]+\.(css|woff2)", self.path):
+            fp = os.path.join(RES, "fonts", self.path[7:])
+            if not os.path.isfile(fp):
+                return self.send_error(404)
+            b = open(fp, "rb").read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/css; charset=utf-8" if fp.endswith(".css") else "font/woff2")
+            self.send_header("Cache-Control", "max-age=604800")
             self.send_header("Content-Length", str(len(b)))
             self.end_headers()
             self.wfile.write(b)
@@ -920,6 +1003,12 @@ class H(BaseHTTPRequestHandler):
                     conf[ia + "_model"] = m
                 else:
                     conf.pop(ia + "_model", None)
+            save_conf(conf)
+            broadcast({"type": "config", **ia_status(conf)})
+            self._json(ia_status(conf))
+        elif self.path == "/tradutor":  # motor da traducao da frase pronta: "ia" (melhor) ou "local" (offline)
+            conf = load_conf()
+            conf["tradutor"] = "local" if body.get("v") == "local" else "ia"
             save_conf(conf)
             broadcast({"type": "config", **ia_status(conf)})
             self._json(ia_status(conf))
