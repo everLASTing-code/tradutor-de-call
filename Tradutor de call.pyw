@@ -189,6 +189,21 @@ def boot(window, api):
                     window.evaluate_js("document.getElementById('t').textContent=" + __import__("json").dumps(t))
                 except Exception:
                     pass
+            # atualizacao automatica (so instalado): se a versao nova ja foi baixada da outra vez, instala agora
+            auto_upd = FROZEN and not TESTE and os.environ.get("TRADUTOR_SEM_ATUALIZAR") != "1"
+            if auto_upd:
+                import atualizar
+                try:
+                    _v = open(os.path.join(getattr(sys, "_MEIPASS", HERE), "versao.txt"), encoding="utf8").read().strip()
+                except Exception:
+                    _v = "0"
+                pend = atualizar.pendente(DATA, _v)
+                if pend:
+                    status("Atualizando pra versão nova…")
+                    print("instalando atualizacao:", pend)
+                    atualizar.instalar(pend)
+                    time.sleep(1.0)
+                    os._exit(0)
             primeira_vez.preparar(DATA, status)
             baixando = os.environ.get("HF_HUB_OFFLINE") != "1"
             pronto = threading.Event()
@@ -204,6 +219,8 @@ def boot(window, api):
             finally:
                 pronto.set()
             setup_hotkeys(api)
+            if auto_upd:   # baixa a proxima versao em segundo plano (instala na proxima abertura)
+                threading.Thread(target=atualizar.baixar, args=(DATA, _v), daemon=True).start()
         window.load_url(URL)
     except Exception as e:
         import traceback

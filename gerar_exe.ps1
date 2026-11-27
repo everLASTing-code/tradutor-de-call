@@ -13,7 +13,7 @@ Write-Host "Gerando a versao $ver"
   --distpath "$here\dist" --workpath "$here\build" --specpath "$here\build" `
   --add-data "$here\pagina.html;." --add-data "$here\gsap.min.js;." --add-data "$here\versao.txt;." `
   --add-data "$here\contexto_padrao.md;." --add-data "$here\termos_padrao.txt;." `
-  --hidden-import tradutor --hidden-import janela_win --hidden-import primeira_vez `
+  --hidden-import tradutor --hidden-import janela_win --hidden-import primeira_vez --hidden-import atualizar `
   --collect-data faster_whisper --collect-all ctranslate2 --collect-all onnxruntime `
   --collect-all av --collect-all clr_loader --collect-all pythonnet --collect-all webview `
   --collect-all soundcard --collect-submodules tokenizers --collect-submodules huggingface_hub `
@@ -35,3 +35,24 @@ Compress-Archive -Path "$here\dist\TradutorDeCall\*" -DestinationPath $zip -Comp
   "$here\instalador.py"
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller (instalador) falhou" }
 Get-Item "$here\dist\Instalar-Tradutor-de-Call.exe" | ForEach-Object { "{0}  {1:N0} MB" -f $_.FullName, ($_.Length / 1MB) }
+
+# 4) versao COM CONTEXTO (so no PC de quem tem os arquivos locais, que nunca vao pro GitHub): o mesmo programa +
+#    a pasta "perfil" com contexto, termos e config. O instalador copia esses arquivos pra pasta da pessoa so se ela
+#    ainda nao tiver, e as atualizacoes automaticas (instalador generico do GitHub) nao mexem neles.
+#    Nome do instalador: Instalar-Tradutor-de-Call-<TRADUTOR_PERFIL>.exe (padrao "Contexto").
+if (Test-Path "$here\contexto_crown.md") {
+  $nomePerfil = if ($env:TRADUTOR_PERFIL) { $env:TRADUTOR_PERFIL } else { "Contexto" }
+  $perfil = "$here\build\perfil"
+  if (Test-Path $perfil) { Remove-Item $perfil -Recurse -Force }
+  New-Item -ItemType Directory -Force $perfil | Out-Null
+  Copy-Item "$here\contexto_crown.md" "$perfil\contexto.md"
+  if (Test-Path "$here\termos.txt") { Copy-Item "$here\termos.txt" "$perfil\termos.txt" }
+  if (Test-Path "$here\perfil_config.json") { Copy-Item "$here\perfil_config.json" "$perfil\config.json" }
+  & $py -m PyInstaller --noconfirm --clean --onefile --windowed --name "Instalar-Tradutor-de-Call-$nomePerfil" `
+    --distpath "$here\dist" --workpath "$here\build\inst-perfil" --specpath "$here\build" `
+    --add-data "$zip;." --add-data "$here\versao.txt;." --add-data "$perfil;perfil" `
+    --exclude-module numpy --exclude-module PIL --exclude-module matplotlib `
+    "$here\instalador.py"
+  if ($LASTEXITCODE -ne 0) { throw "PyInstaller (instalador com contexto) falhou" }
+  Get-Item "$here\dist\Instalar-Tradutor-de-Call-$nomePerfil.exe" | ForEach-Object { "{0}  {1:N0} MB" -f $_.FullName, ($_.Length / 1MB) }
+}

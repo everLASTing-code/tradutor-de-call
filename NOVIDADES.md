@@ -8,4 +8,4 @@ Se o Windows mostrar "O Windows protegeu o computador", clica em "Mais informaç
 - Respostas sugeridas em inglês e tradução do que você escreve em português.
 - Bloco de notas que anota os tópicos da call.
 - Barra flutuante com temas e cores, invisível em print e tela compartilhada.
-- Aviso de atualização ao abrir.
+- **Novo na 0.1.2:** atualização automática. Quando sai versão nova, o programa baixa sozinho em segundo plano e instala na próxima vez que você abrir (uns segundos), sem interromper a call.

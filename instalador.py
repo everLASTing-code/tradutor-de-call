@@ -48,6 +48,25 @@ def pasta_especial(csidl):
     return buf.value
 
 
+AUTO = "--auto" in sys.argv          # chamado pelo proprio programa pra se atualizar
+# pasta do que e da pessoa (mesma regra do tradutor.py); o instalador nunca apaga nada dela
+DATA = os.environ.get("TRADUTOR_DADOS") or os.path.join(os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"),
+                                                        "TradutorDeCall")
+# versao "com contexto": o instalador traz a pasta "perfil" (contexto.md, termos.txt, config.json) e
+# copia pra pasta da pessoa so o que ela ainda nao tem. As atualizacoes (instalador generico) nao mexem nisso.
+PERFIL = os.path.join(RES, "perfil")
+
+
+def copiar_perfil():
+    if not os.path.isdir(PERFIL):
+        return
+    os.makedirs(DATA, exist_ok=True)
+    for n in os.listdir(PERFIL):
+        alvo = os.path.join(DATA, n)
+        if not os.path.exists(alvo):
+            shutil.copyfile(os.path.join(PERFIL, n), alvo)
+
+
 def instalar(status, progresso):
     if not TESTE:
         status("Fechando a versão antiga…")
@@ -62,6 +81,7 @@ def instalar(status, progresso):
             z.extract(n, DEST)
             if i % 25 == 0 or i == len(nomes):
                 progresso(i / len(nomes))
+    copiar_perfil()
     if TESTE:
         status("Pronto (teste).")
         return
@@ -81,7 +101,7 @@ def main():
     root.geometry(f"{w}x{h}+{(root.winfo_screenwidth() - w) // 2}+{(root.winfo_screenheight() - h) // 2}")
     tk.Label(root, text=NOME + (f"  {VERSAO}" if VERSAO else ""), bg="#0b0b0d", fg="#f5f5f4",
              font=("Segoe UI", 15, "bold")).pack(anchor="w", padx=24, pady=(22, 2))
-    msg = tk.Label(root, text="Preparando…", bg="#0b0b0d", fg="#9a9a9e", font=("Segoe UI", 10), anchor="w",
+    msg = tk.Label(root, text="Atualizando pra versão nova…" if AUTO else "Preparando…", bg="#0b0b0d", fg="#9a9a9e", font=("Segoe UI", 10), anchor="w",
                    justify="left", wraplength=392)
     msg.pack(fill="x", padx=24)
     barra = tk.Canvas(root, height=6, bg="#202023", highlightthickness=0)
