@@ -14,8 +14,8 @@ import time
 import tkinter as tk
 import zipfile
 
-NOME = "TLS"
-NOME_ANTIGO = "Tradutor de call"   # atalho das versoes antes de 0.1.5: apagado ao instalar
+NOME = "Ponte"
+NOMES_ANTIGOS = ("Tradutor de call", "TLS")   # atalhos de versoes antigas: apagados ao instalar
 RES = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
 TESTE = os.environ.get("TRADUTOR_INSTALAR_TESTE")      # pasta de teste: instala la, sem atalho e sem abrir
 DEST = TESTE or os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "Programs", "TradutorDeCall")
@@ -89,13 +89,14 @@ def instalar(status, progresso):
     status("Criando os atalhos…")
     for pasta in (pasta_especial(0x10), pasta_especial(0x02)):    # Area de Trabalho e Menu Iniciar > Programas
         atalho(pasta)
-        velho = os.path.join(pasta, NOME_ANTIGO + ".lnk")
-        try:   # so apaga o atalho antigo se ele apontar pro programa instalado (nao mexe em atalho de outra coisa)
-            raw = open(velho, "rb").read() if os.path.isfile(velho) else b""
-            if raw and any(DEST.lower() in raw.decode(c, "ignore").lower() for c in ("utf-16-le", "latin-1")):
-                os.remove(velho)
-        except OSError:
-            pass
+        for antigo in NOMES_ANTIGOS:
+            velho = os.path.join(pasta, antigo + ".lnk")
+            try:   # so apaga o atalho antigo se ele apontar pro programa instalado (nao mexe em atalho de outra coisa)
+                raw = open(velho, "rb").read() if os.path.isfile(velho) else b""
+                if raw and any(DEST.lower() in raw.decode(c, "ignore").lower() for c in ("utf-16-le", "latin-1")):
+                    os.remove(velho)
+            except OSError:
+                pass
     status("Pronto. Abrindo o tradutor…")
     subprocess.Popen([EXE], cwd=DEST, close_fds=True)
 

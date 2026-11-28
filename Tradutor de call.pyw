@@ -34,7 +34,7 @@ URL = f"http://localhost:{PORT}"
 # janela de teste (so pra conferir o visual sem mexer na janela que o LAST esta usando):
 # TRADUTOR_TESTE=1 abre com outro titulo, nao esconde de print e grava os recortes num arquivo
 TESTE = os.environ.get("TRADUTOR_TESTE") == "1"
-TITLE = "TLS (teste)" if TESTE else "TLS"   # nome do app (LAST 27/11: "muda o nome")
+TITLE = "Ponte (teste)" if TESTE else "Ponte"   # nome do app (LAST 27/11: "muda o nome")
 janela_win.TITLE = TITLE
 WIN_W, WIN_H = 700, 900          # janela "invisivel": so aparecem as pecas recortadas
 SPLASH_RECT = (200, 14, 300, 52, 26)   # x, y, largura, altura, raio da pilula de carregamento (px CSS)

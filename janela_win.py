@@ -22,7 +22,7 @@ kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
 user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
 
 
-TITLE = "TLS"     # o .pyw troca isso quando abre uma janela de teste com outro titulo
+TITLE = "Ponte"     # o .pyw troca isso quando abre uma janela de teste com outro titulo
 
 
 def hwnd(title=None):
@@ -94,7 +94,7 @@ user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
 def set_icon(h, path):
     """Poe o icone do app na janela e na barra de tarefas (no modo pasta o processo e o pythonw)."""
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("TLS.Tradutor")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Ponte.Tradutor")
         load = user32.LoadImageW
         load.restype = wintypes.HANDLE
         for which, size in ((1, 0), (0, 16)):   # ICON_BIG (tamanho padrao) e ICON_SMALL

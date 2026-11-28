@@ -2,6 +2,9 @@
 
 Se o Windows mostrar "O Windows protegeu o computador", clica em "Mais informações" e em "Executar assim mesmo". O aviso aparece porque o instalador não tem assinatura paga.
 
+**Novo na 0.1.6:**
+- O app agora se chama Ponte, com ícone de fone e onda de voz. O atalho antigo é trocado sozinho.
+
 **Novo na 0.1.5:**
 - O app agora se chama TLS e tem ícone novo. O atalho antigo é trocado sozinho.
 

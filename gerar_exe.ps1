@@ -56,3 +56,8 @@ if (Test-Path "$here\contexto_crown.md") {
   if ($LASTEXITCODE -ne 0) { throw "PyInstaller (instalador com contexto) falhou" }
   Get-Item "$here\dist\Instalar-Tradutor-de-Call-$nomePerfil.exe" | ForEach-Object { "{0}  {1:N0} MB" -f $_.FullName, ($_.Length / 1MB) }
 }
+
+# 5) nomes com a marca (Ponte, 27/11). O instalador do GitHub continua "Instalar-Tradutor-de-Call.exe"
+#    porque a atualizacao automatica das versoes antigas procura esse arquivo; aqui saem copias com o nome novo.
+Get-ChildItem "$here\dist\Instalar-Tradutor-de-Call*.exe" | ForEach-Object {
+  Copy-Item $_.FullName (Join-Path $_.DirectoryName ($_.Name -replace "^Instalar-Tradutor-de-Call", "Instalar-Ponte")) -Force }
