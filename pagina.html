@@ -297,6 +297,8 @@ body.web .apponly{display:none!important}
         <div class="seg" id="glassSeg"><button data-v="1">Transparente</button><button data-v="0">Sólido</button></div></div>
       <div class="pr"><div class="l"><b>Texto grande</b></div>
         <div class="seg" id="mainSeg"><button data-v="pt">Português</button><button data-v="en">Inglês</button></div></div>
+      <div class="pr"><div class="l"><b>Movimento do texto</b><span>Parado é mais fácil de ler durante a call</span></div>
+        <div class="seg" id="motionSeg"><button data-v="0">Parado</button><button data-v="1">Animado</button></div></div>
       <div class="pr"><div class="l"><b>Segunda língua embaixo</b></div>
         <div class="seg" id="secSeg"><button data-v="1">Mostrar</button><button data-v="0">Esconder</button></div></div>
       <div class="pr"><div class="l"><b>Tamanho da letra</b><span>Ou Ctrl + rodinha do mouse</span></div><input type="range" id="fs" min="17" max="34"></div>
@@ -329,6 +331,9 @@ body.web .apponly{display:none!important}
 <script>
 const $ = id => document.getElementById(id);
 const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+/* texto parado (LAST 27/11: "as animações das palavras atrapalham"): a fala aparece sem palavra subindo nem
+   linha deslizando. Ajustes → Aparência → "Movimento do texto" liga de volta. */
+const calm = () => reduce || pref.motion !== "1";
 gsap.defaults({ ease: "expo.out", duration: reduce ? 0 : .5 });
 const esc = s => (s || "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -398,7 +403,7 @@ function applyPrefs(anim){
   document.documentElement.style.setProperty("--fs", pref.fs + "px");
   document.body.classList.toggle("hide-b", pref.sec === "0");
   $("fs").value = pref.fs;
-  segSet("mainSeg", pref.main, anim); segSet("secSeg", pref.sec, anim); segSet("glassSeg", pref.glass ? "1" : "0", anim);
+  segSet("mainSeg", pref.main, anim); segSet("secSeg", pref.sec, anim); segSet("motionSeg", pref.motion === "1" ? "1" : "0", anim); segSet("glassSeg", pref.glass ? "1" : "0", anim);
   renderThemes();
   applyColors(); savePrefs();
 }
@@ -517,13 +522,22 @@ $("newer").onclick = () => { follow = true; list.scrollTop = list.scrollHeight; 
 $("copyAll").onclick = () => { if (!items.length) return toast("A call ainda está vazia");
   copy(items.map(it => `[${(it.t || "").slice(0, 5)}] ${it.mine ? "(você) " : ""}${it.en}\n${it.pt}`).join("\n\n"), true); toast("Call copiada"); pulse(); };
 /* a tradução boa (IA) chega ~0,7 s depois da frase: troca só o texto em português, com um fade curto */
+function unLive(){ if (liveEl){ const f = snap(); dropLive(); if (curEl) curEl.classList.add("cur"), curEl.classList.remove("prev"); flip(f, null); } }
+/* o pedaço novo da fala foi juntado na frase anterior (montagem da frase, 27/11): a linha cresce no lugar */
+function mergeRow(m){
+  const it = items.find(x => x.id === m.id); if (!it) return;
+  it.en = m.en; it.pt = m.pt;
+  const el = list.querySelector(`.row[data-id="${m.id}"]:not(.live)`); if (!el) return;
+  const [a, b] = texts(it); el.querySelector(".a").textContent = a; el.querySelector(".b").textContent = b;
+  stick();
+}
 function fixPt(m){
   const it = items.find(x => x.id === m.id && !x.mine); if (!it) return;
   it.pt = m.pt;
   const el = list.querySelector(`.row[data-id="${m.id}"]:not(.live)`); if (!el) return;
   const [a, b] = texts(it), A = el.querySelector(".a"), B = el.querySelector(".b");
   const swap = () => { A.textContent = a; B.textContent = b; };
-  if (reduce || !pref.call){ swap(); return; }
+  if (calm() || !pref.call){ swap(); return; }
   const t = pref.main === "en" ? B : A;
   gsap.to(t, { autoAlpha: .25, duration: .12, onComplete: () => { swap(); gsap.to(t, { autoAlpha: 1, duration: .3, clearProps: "opacity,visibility" }); } });
 }
@@ -533,7 +547,7 @@ const snap = () => new Map([...list.querySelectorAll(".row")].map(el => [el, el.
 /* FLIP: mede antes, muda o layout, e anima cada fala do lugar antigo pro novo (a atual encolhe pra virar histórico) */
 function flip(first, shrink){
   if (!stick()) return;                 // lendo o histórico: não pula nem anima
-  if (reduce || !pref.call) return;
+  if (calm() || !pref.call) return;
   first.forEach((f, el) => { if (!el.isConnected) return; const l = el.getBoundingClientRect(), sc = el === shrink && l.height > 0;
     const dy = sc ? f.bottom - l.bottom : f.top - l.top;
     const from = { y: dy }; if (sc) from.scale = Math.max(.6, Math.min(1.7, f.height / l.height));
@@ -549,7 +563,7 @@ function setCurrent(it, anim){
   list.appendChild(curEl); ages();
   if (!anim){ stick(); return; }
   flip(first, old); pulse();
-  if (reduce) return;
+  if (calm()) return;
   // velocidade (LAST 22/11): se a fala ja estava aparecendo ao vivo, nao reanima as palavras; so troca o texto
   if (hadLive){ gsap.from(curEl.querySelectorAll(".b"), { autoAlpha: .4, duration: .2, clearProps: "all" }); return; }
   const a = curEl.querySelector(".a"); a.innerHTML = words(texts(it)[0]);
@@ -568,7 +582,7 @@ function setLive(it){
   liveEl.innerHTML = `<div class="meta"><span>agora</span></div><div class="a">${words(a)}<span class="caret"></span></div><div class="b">${esc(b)}</div>`;
   if (fresh) flip(first, curEl); else stick();
   const ws = [...liveEl.querySelectorAll(".a .wi")];
-  if (!reduce && ws.length > liveN) gsap.from(ws.slice(liveN), { yPercent: 105, duration: .18, stagger: .012, clearProps: "all" });
+  if (!calm() && ws.length > liveN) gsap.from(ws.slice(liveN), { yPercent: 105, duration: .18, stagger: .012, clearProps: "all" });
   liveN = ws.length;
 }
 const emptyHtml = () => paused
@@ -662,7 +676,8 @@ function connect(){
     switch (m.type){
       case "hello": items = m.history || []; setPaused(m.paused, true); rebuild(); break;
       case "partial": setLive(m); break;
-      case "drop": if (liveEl){ const f = snap(); dropLive(); if (curEl) curEl.classList.add("cur"), curEl.classList.remove("prev"); flip(f, null); } break;
+      case "drop": unLive(); break;
+      case "merge": unLive(); mergeRow(m); break;
       case "pt_fix": fixPt(m); break;
       case "final": items.push(m); setCurrent(m, true); if (!m.mine){ topicN++; topicAt = Date.now(); } break;
       case "level": S.level = paused ? 0 : m.v; break;
@@ -698,10 +713,11 @@ $("pause").onclick = () => fetch("/pause", { method: "POST", body: JSON.stringif
 
 /* ---------- ajustes ---------- */
 document.querySelectorAll("#mainSeg button").forEach(b => b.onclick = () => { pref.main = b.dataset.v; applyPrefs(true); rebuild(); });
+document.querySelectorAll("#motionSeg button").forEach(b => b.onclick = () => { pref.motion = b.dataset.v; applyPrefs(true); });
 document.querySelectorAll("#secSeg button").forEach(b => b.onclick = () => { pref.sec = b.dataset.v; applyPrefs(true); });
 /* menu lateral dos ajustes: Geral · Aparência · Respostas · Atalhos */
 const PAGES = { geral: ["Geral", "Call, captação e áudio"], visual: ["Aparência", "Temas, cores e letra"], ia: ["Respostas", "Qual IA sugere e o contexto da call"], keys: ["Atalhos", "Funcionam com o Discord na frente"] };
-const GROUPS = { visual: ["themeList", "glassSeg", "sws", "op", "fs", "mainSeg", "secSeg", "topSeg", "restore"], ia: ["notes", "iaSeg", "tradSeg", "meName", "ctxFile", "termsBox"], keys: ["keysBox"] };
+const GROUPS = { visual: ["themeList", "glassSeg", "sws", "op", "fs", "mainSeg", "secSeg", "motionSeg", "topSeg", "restore"], ia: ["notes", "iaSeg", "tradSeg", "meName", "ctxFile", "termsBox"], keys: ["keysBox"] };
 /* perfil: nome, contexto fixo e termos de cada pessoa (ficam só no PC dela) */
 { let pT; const savePerfil = body => { clearTimeout(pT); pT = setTimeout(() => fetch("/perfil", { method: "POST", body: JSON.stringify(body()) }).catch(() => toast("Não deu pra salvar")), 600); };
   fetch("/perfil").then(r => r.json()).then(p => { $("meName").value = p.nome || ""; $("ctxFile").value = p.contexto || ""; $("termsBox").value = p.termos || ""; }).catch(() => {});

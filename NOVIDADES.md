@@ -2,6 +2,12 @@
 
 Se o Windows mostrar "O Windows protegeu o computador", clica em "Mais informações" e em "Executar assim mesmo". O aviso aparece porque o instalador não tem assinatura paga.
 
+**Novo na 0.1.4:**
+- Transcrição bem mais certa: quando a pessoa fala com pausas, o app ouve de novo a fala inteira e refaz a linha, em vez de transcrever pedacinho por pedacinho.
+- Frases inteiras e com pontuação, o que deixa a tradução melhor.
+- Texto parado por padrão (sem palavra subindo). Dá pra ligar a animação em Ajustes → Aparência.
+- Mais rápido na frase longa.
+
 **Novo na 0.1.3:**
 - Tradução muito melhor: a frase pronta é traduzida pela IA (pelo sentido, com gíria e contexto) em menos de 1 segundo. Usa a chave de IA que você colar em Ajustes (a do Gemini é grátis). Sem chave, fica a tradução offline. Ajustes → Respostas → Motor da tradução.
 - Desligado, o app não gasta mais processador (antes ficava ouvindo o áudio parado).

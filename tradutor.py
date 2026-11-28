@@ -460,21 +460,45 @@ def better_pt(en, prev=(), conf=None):
         return None
 
 
-def fix_pt(item, prev, logfile):
-    """Roda numa thread depois que a frase aparece: troca a traducao local pela da IA e avisa a janela."""
-    t0 = time.time()
+def save_line(item):
+    """Grava a fala no arquivo da call uma vez so: quando a frase fechou de vez e a traducao da IA ja chegou."""
+    if item.get("saved") or item.get("busy") or not item.get("closed"):
+        return
+    item["saved"] = True
+    try:
+        with open(item.get("file") or logfile, "a", encoding="utf8") as f:
+            f.write(f"[{item['t']}] {item['en']}\n           {item['pt']}\n\n")
+    except Exception:
+        pass
+
+
+def fix_pt(item, prev):
+    """Roda numa thread depois que a frase aparece: troca a traducao local pela da IA e avisa a janela.
+    Se a frase cresceu (pedaco novo juntado) enquanto a IA pensava, descarta esta traducao (vem outra)."""
+    t0, v = time.time(), item.get("v", 0)
+    item["busy"] = item.get("busy", 0) + 1
     try:
         r = better_pt(item["en"], prev)
-        if r and r["pt"] != item["pt"]:
+        if r and item.get("v", 0) == v and r["pt"] != item["pt"]:
             log(f"traducao {r['via']} em {time.time() - t0:.1f}s:", r["pt"])
             item["pt"] = r["pt"]
             broadcast({"type": "pt_fix", "id": item["id"], "pt": r["pt"]})
     finally:
-        try:
-            with open(logfile, "a", encoding="utf8") as f:
-                f.write(f"[{item['t']}] {item['en']}\n           {item['pt']}\n\n")
-        except Exception:
-            pass
+        item["busy"] -= 1
+        save_line(item)
+
+
+def close_open():
+    """Fecha a ultima fala (nao junta mais nada nela), solta o audio guardado e grava no arquivo."""
+    if history and not history[-1].get("closed"):
+        history[-1]["closed"] = True
+        history[-1]["_audio"] = None
+        save_line(history[-1])
+
+
+def public(item):
+    """O que da fala vai pra janela (sem audio nem caminho de arquivo)."""
+    return {k: v for k, v in item.items() if k != "file" and not k.startswith("_")}
 
 
 last_sugs = []   # ultimas sugestoes (pros atalhos Ctrl+Shift+1/2/3)
@@ -601,6 +625,7 @@ def main_loop(in_q, model, en2pt):
     speaking = False
     last_partial = 0.0
     seg_id = 0
+    aclock = 0.0      # relogio do audio (s ouvidos): mede pausa de verdade, mesmo se a transcricao atrasar
     last_level_sent = 0.0
 
     lang_cache = {}   # seg_id -> hora da ultima previa que deu ingles
@@ -679,7 +704,10 @@ def main_loop(in_q, model, en2pt):
                 # velocidade: se as previas dessa fala ja confirmaram ingles do comeco ao fim, nao detecta de novo
                 if sp["det"] == "none":
                     pass
-                elif sp["det"] == "smart" and seg_id in lang_cache and seg_id not in not_en and len(audio) / SR < 6:
+                elif (sp["det"] == "smart" and seg_id in lang_cache and seg_id not in not_en
+                      and time.time() - lang_cache[seg_id] < 2.0):
+                    # (27/11) as previas olham os ultimos 2,5 s a cada 1,5 s, entao ja cobriram a fala inteira;
+                    # antes so valia ate 6 s e a frase longa pagava mais uma passada (~1 s) so pra ver a lingua
                     log("lingua: previas ja deram ingles, sem nova deteccao")
                 else:
                     audio, other = english_only(audio)
@@ -687,7 +715,11 @@ def main_loop(in_q, model, en2pt):
                     return "", other
         # contexto: nomes e termos de trabalho so em call de trabalho; em conversa comum eles atrapalham.
         # as ultimas falas entram como contexto pra manter nomes e assunto.
-        prompt = (PROMPT + " " if state.get("ctx", "crown") == "crown" else "") + (recent_text() if sp["hist"] else "")
+        # (27/11) as falas anteriores vem ANTES e terminam em "...": o Whisper imita o fim do prompt, e com o texto
+        # recente (sem pontuacao) no fim ele parava de pontuar a call toda ("animation okay any questions").
+        # Testado: recente antes dos termos = "...animation. Okay, any questions?"
+        rec = recent_text() if sp["hist"] else ""
+        prompt = (rec + "... " if rec else "") + (PROMPT if state.get("ctx", "crown") == "crown" else "")
         segs, info = model.transcribe(
             audio, language=lang, beam_size=sp["beam"] if final else 1,
             condition_on_previous_text=False, initial_prompt=prompt.strip() or None,
@@ -742,6 +774,7 @@ def main_loop(in_q, model, en2pt):
         if not blocks:
             continue
         for b in blocks:
+            aclock += len(b) / SR
             rms = float(np.sqrt(np.mean(b * b))) if b.size else 0.0
             state["level"] = rms
             if state["paused"]:
@@ -751,6 +784,7 @@ def main_loop(in_q, model, en2pt):
             if rms > th:
                 if not speaking:
                     speaking = True
+                    seg_t0 = aclock - len(b) / SR - len(pre) * BLOCK / SR   # quando essa fala comecou (pra juntar frases)
                     buf = list(pre)
                     seg_id += 1
                     last_partial = time.time()
@@ -776,32 +810,58 @@ def main_loop(in_q, model, en2pt):
         prev_every = CFG["partial_every"] if CFG["partial_every"] > 1 else sp["prev"]   # na CPU fica o lento
         end = silent >= fim or dur >= CFG["max_len"]
         if end:
+            silent_at_end = silent
             audio = np.concatenate(buf)
             speaking, silent, buf = False, 0.0, []
             if dur - fim < 0.4:
                 broadcast({"type": "drop", "id": seg_id})
                 continue
             t0 = time.time()
-            txt, det = transcribe(audio, True)
+            end_t = aclock - silent_at_end
+            last = history[-1] if history else None
+            # FALA CORRIDA OUVIDA DE NOVO (27/11, LAST: "ta transcrevendo errado muita coisa"): quem fala com
+            # pausas virava pedacinhos de 1-2 s ("of the channel", "with some time.") e o Whisper sem contexto
+            # erra ("the new an addict", "No sight"). Agora, se a pessoa voltou a falar logo (< 1,2 s), o Whisper
+            # ouve de novo a linha aberta + o pedaco novo (ate 22 s) e a linha e refeita com a fala inteira.
+            joined = (not mic_mode() and last is not None and not last.get("closed") and not last.get("mine")
+                      and last.get("lang") == "en" and last.get("_audio") is not None
+                      and seg_t0 - last.get("end_t", 0) < 1.2
+                      and (len(last["_audio"]) + len(audio)) / SR <= 22)
+            full = None
+            if joined:
+                full = np.concatenate([last["_audio"], np.zeros(int(0.25 * SR), dtype=np.float32), audio])
+                txt, det = transcribe(full, True)
+                if not txt or det != "en":      # nao deu certo junto: o pedaco vira linha propria
+                    joined = False
+            if not joined:
+                txt, det = transcribe(audio, True)
             if not txt:
                 broadcast({"type": "drop", "id": seg_id})
                 if det not in ("en", "pt", "?") or (det == "pt" and not mic_mode()):
                     broadcast({"type": "skip", "lang": det})   # a janela avisa "ignorando fala em ..."
                 continue
-            en, pt = both(txt, det)
-            item = {"type": "final", "id": seg_id, "en": en, "pt": pt, "mine": mic_mode(), "lang": det, "ts": time.time(),
-                    "t": datetime.now().strftime("%H:%M:%S")}
-            history.append(item)
-            del history[:-300]
-            broadcast(item)
+            # com a IA traduzindo logo depois, a traducao local e so um rascunho: beam 1 (mais rapido)
+            en, pt = both(txt, det, 1 if det == "en" and trad_provider(load_conf()) else 2)
+            if joined:
+                last.update(en=en, pt=pt, end_t=end_t, v=last.get("v", 0) + 1, _audio=full)
+                broadcast({"type": "merge", "id": last["id"], "drop": seg_id, "en": en, "pt": pt})
+                log("ouvi a fala inteira de novo (%.1fs)" % (len(full) / SR))
+                item = last
+            else:
+                close_open()
+                item = {"type": "final", "id": seg_id, "en": en, "pt": pt, "mine": mic_mode(), "lang": det,
+                        "ts": time.time(), "t": datetime.now().strftime("%H:%M:%S"), "end_t": end_t, "v": 0,
+                        "file": logfile, "_audio": audio if det == "en" and not mic_mode() else None}
+                history.append(item)
+                del history[:-300]
+                broadcast(public(item))
             # sugestoes so quando o LAST clicar (pedido 22/11)
             # traducao da IA por cima da local, sem segurar a fala na tela
             if det == "en" and not item["mine"]:
-                prev = [h["en"] for h in history[-5:-1] if not h.get("mine")][-3:]
-                threading.Thread(target=fix_pt, args=(item, prev, logfile), daemon=True).start()
+                prev = [h["en"] for h in history[:-1] if not h.get("mine")][-3:]
+                threading.Thread(target=fix_pt, args=(item, prev), daemon=True).start()
             else:
-                with open(logfile, "a", encoding="utf8") as f:
-                    f.write(f"[{item['t']}] {en}\n           {pt}\n\n")
+                close_open()
             log(f"{time.time() - t0:.1f}s |", en, "=>", pt)
         elif now - last_partial >= prev_every and dur > min(0.5, sp["min"]):
             last_partial = now
@@ -872,7 +932,7 @@ class H(BaseHTTPRequestHandler):
             with clients_lock:
                 clients.append(q)
             try:
-                hello = {"type": "hello", "history": history[-80:], "device": state["device"],
+                hello = {"type": "hello", "history": [public(h) for h in history[-80:]], "device": state["device"],
                          "paused": state["paused"], "log": logfile}
                 self.wfile.write(("data: " + json.dumps(hello, ensure_ascii=False) + "\n\n").encode("utf8"))
                 self.wfile.flush()
@@ -1036,6 +1096,7 @@ class H(BaseHTTPRequestHandler):
         elif self.path == "/reset":
             # apaga o chat atual e comeca uma call nova (o arquivo antigo fica salvo)
             global logfile
+            close_open()
             history.clear()
             last_sugs.clear()
             logfile = os.path.join(LOGDIR, datetime.now().strftime("call_%Y-%m-%d_%H-%M-%S.txt"))
