@@ -34,7 +34,7 @@ URL = f"http://localhost:{PORT}"
 # janela de teste (so pra conferir o visual sem mexer na janela que o LAST esta usando):
 # TRADUTOR_TESTE=1 abre com outro titulo, nao esconde de print e grava os recortes num arquivo
 TESTE = os.environ.get("TRADUTOR_TESTE") == "1"
-TITLE = "Tradutor de call (teste)" if TESTE else "Tradutor de call"
+TITLE = "TLS (teste)" if TESTE else "TLS"   # nome do app (LAST 27/11: "muda o nome")
 janela_win.TITLE = TITLE
 WIN_W, WIN_H = 700, 900          # janela "invisivel": so aparecem as pecas recortadas
 SPLASH_RECT = (200, 14, 300, 52, 26)   # x, y, largura, altura, raio da pilula de carregamento (px CSS)
@@ -177,6 +177,9 @@ def boot(window, api):
     splash_region()
     if not TESTE and load_invisivel():
         print("invisivel em print/compartilhamento:", janela_win.hide_from_capture(janela_win.hwnd()))
+    _ico = os.path.join(getattr(sys, "_MEIPASS", HERE), "icone", "icone.ico")
+    if os.path.isfile(_ico):
+        janela_win.set_icon(janela_win.hwnd(), _ico)
     try:
         if not port_busy():
             # primeira abertura num PC novo: baixa os arquivos da placa e libera o download dos modelos,

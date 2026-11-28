@@ -9,7 +9,7 @@ $ver = (Get-Content "$here\versao.txt" -Raw).Trim()
 Write-Host "Gerando a versao $ver"
 
 # 1) o programa em pasta (abre rapido; nao descompacta nada a cada abertura)
-& $py -m PyInstaller --noconfirm --clean --windowed --name TradutorDeCall `
+& $py -m PyInstaller --noconfirm --clean --windowed --name TradutorDeCall --icon "$here\icone\icone.ico" --add-data "$here\icone;icone" `
   --distpath "$here\dist" --workpath "$here\build" --specpath "$here\build" `
   --add-data "$here\pagina.html;." --add-data "$here\gsap.min.js;." --add-data "$here\fonts;fonts" --add-data "$here\versao.txt;." `
   --add-data "$here\contexto_padrao.md;." --add-data "$here\termos_padrao.txt;." `
@@ -28,7 +28,7 @@ if (Test-Path $zip) { Remove-Item $zip }
 Compress-Archive -Path "$here\dist\TradutorDeCall\*" -DestinationPath $zip -CompressionLevel Optimal
 
 # 3) o instalador: um .exe so, que copia o programa pro PC da pessoa e cria os atalhos
-& $py -m PyInstaller --noconfirm --clean --onefile --windowed --name "Instalar-Tradutor-de-Call" `
+& $py -m PyInstaller --noconfirm --clean --onefile --windowed --icon "$here\icone\icone.ico" --name "Instalar-Tradutor-de-Call" `
   --distpath "$here\dist" --workpath "$here\build\inst" --specpath "$here\build" `
   --add-data "$zip;." --add-data "$here\versao.txt;." `
   --exclude-module numpy --exclude-module PIL --exclude-module matplotlib `
@@ -48,7 +48,7 @@ if (Test-Path "$here\contexto_crown.md") {
   Copy-Item "$here\contexto_crown.md" "$perfil\contexto.md"
   if (Test-Path "$here\termos.txt") { Copy-Item "$here\termos.txt" "$perfil\termos.txt" }
   if (Test-Path "$here\perfil_config.json") { Copy-Item "$here\perfil_config.json" "$perfil\config.json" }
-  & $py -m PyInstaller --noconfirm --clean --onefile --windowed --name "Instalar-Tradutor-de-Call-$nomePerfil" `
+  & $py -m PyInstaller --noconfirm --clean --onefile --windowed --icon "$here\icone\icone.ico" --name "Instalar-Tradutor-de-Call-$nomePerfil" `
     --distpath "$here\dist" --workpath "$here\build\inst-perfil" --specpath "$here\build" `
     --add-data "$zip;." --add-data "$here\versao.txt;." --add-data "$perfil;perfil" `
     --exclude-module numpy --exclude-module PIL --exclude-module matplotlib `

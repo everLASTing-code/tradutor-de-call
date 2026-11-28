@@ -25,3 +25,7 @@ dist/
 *.spec
 perfil_config.json
 guia/
+icone/previa_tamanhos.png
+icone/servidor_print.png
+icone/crop_zoom.png
+icone/previa_tls.png

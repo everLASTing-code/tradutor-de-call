@@ -2,6 +2,9 @@
 
 Se o Windows mostrar "O Windows protegeu o computador", clica em "Mais informações" e em "Executar assim mesmo". O aviso aparece porque o instalador não tem assinatura paga.
 
+**Novo na 0.1.5:**
+- O app agora se chama TLS e tem ícone novo. O atalho antigo é trocado sozinho.
+
 **Novo na 0.1.4:**
 - Transcrição bem mais certa: quando a pessoa fala com pausas, o app ouve de novo a fala inteira e refaz a linha, em vez de transcrever pedacinho por pedacinho.
 - Frases inteiras e com pontuação, o que deixa a tradução melhor.

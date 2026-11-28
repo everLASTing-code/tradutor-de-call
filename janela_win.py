@@ -22,7 +22,7 @@ kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
 user32.SetClipboardData.argtypes = [wintypes.UINT, wintypes.HANDLE]
 
 
-TITLE = "Tradutor de call"     # o .pyw troca isso quando abre uma janela de teste com outro titulo
+TITLE = "TLS"     # o .pyw troca isso quando abre uma janela de teste com outro titulo
 
 
 def hwnd(title=None):
@@ -89,6 +89,22 @@ def no_backdrop(h):
 
 WDA_EXCLUDEFROMCAPTURE = 0x11
 user32.SetWindowDisplayAffinity.argtypes = [wintypes.HWND, wintypes.DWORD]
+
+
+def set_icon(h, path):
+    """Poe o icone do app na janela e na barra de tarefas (no modo pasta o processo e o pythonw)."""
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("TLS.Tradutor")
+        load = user32.LoadImageW
+        load.restype = wintypes.HANDLE
+        for which, size in ((1, 0), (0, 16)):   # ICON_BIG (tamanho padrao) e ICON_SMALL
+            ic = load(None, path, 1, size, size, 0x10 | (0x40 if not size else 0))
+            if ic:
+                user32.SendMessageW(h, 0x80, which, ic)
+        return True
+    except Exception as e:
+        print("icone:", e)
+        return False
 
 
 def hide_from_capture(h):
