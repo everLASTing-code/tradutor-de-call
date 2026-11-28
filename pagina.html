@@ -137,7 +137,7 @@ button{cursor:pointer;border:0;background:none}
 #padT{display:block;width:100%;height:210px;resize:none;background:none;border:0;outline:0;font-size:14.5px;line-height:1.6}
 #padT::placeholder{color:var(--mute)}
 #padT::-webkit-scrollbar{width:0}
-.pf{display:flex;align-items:center;gap:14px;margin-top:6px;font-size:12px;color:var(--dim)}
+.pf{display:flex;align-items:center;gap:12px;white-space:nowrap;margin-top:6px;font-size:12px;color:var(--dim)}
 .pf .roll{margin-right:auto}
 .pf button{color:var(--mute);font-weight:600} .pf button:hover{color:var(--ink)}
 
@@ -244,9 +244,10 @@ body.web .apponly{display:none!important}
       <b>Responder</b><span class="ib" style="visibility:hidden"></span>
       <button class="ib" data-x="slot" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="box">
-      <textarea id="msg" placeholder="Escreve em português…" aria-label="Escrever em português"></textarea>
+      <textarea id="msg" placeholder="Escreve em português pra mandar em inglês, ou pergunta sobre a call…" aria-label="Escrever em português"></textarea>
       <div class="tools">
         <button class="chip" id="suggest" title="Pedir 3 respostas prontas pra última fala"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/></svg><span class="roll"><span id="sugL">Sugerir resposta</span></span><kbd>R</kbd></button>
+        <button class="chip" id="askCall" title="Perguntar sobre o que foi dito na call (Ctrl+Enter)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 0 1 4.8.9c0 1.7-2.4 2.2-2.4 3.6M12 17h.01"/></svg><span class="roll"><span id="askL">Perguntar à call</span></span><kbd>Ctrl ↵</kbd></button>
         <button class="send" id="send" title="Traduzir pro inglês (Enter)" aria-label="Traduzir pro inglês"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
       </div>
     </div>
@@ -260,7 +261,7 @@ body.web .apponly{display:none!important}
       <button class="ib" data-x="slot" aria-label="Fechar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="box">
       <textarea id="padT" spellcheck="false" placeholder="Anota aqui: o que combinaram, nomes, prazos.&#10;Passa o mouse numa fala e clica em “+ anotar” pra mandar ela pra cá."></textarea>
-      <div class="pf"><span class="roll"><span id="padS">Salva sozinho</span></span><button id="padAuto" title="A IA anota sozinha os tópicos da call">Anotar sozinho: ligado</button><button id="padNow" title="Anotar agora o que foi falado">Anotar agora</button><button id="padCopy">Copiar tudo</button><button id="padClear">Limpar</button></div>
+      <div class="pf"><span class="roll"><span id="padS">Salva sozinho</span></span><button id="padAuto" title="A IA anota sozinha os tópicos da call (liga e desliga)">Auto on</button><button id="padNow" title="Anotar agora o que foi falado">Anotar</button><button id="padSum" title="A IA escreve o resumo da call: decisões, tarefas e prazos">Resumo</button><button id="padMd" title="Salvar as notas num arquivo .md">Salvar .md</button><button id="padCopy">Copiar</button><button id="padClear">Limpar</button></div>
     </div>
   </section>
 
@@ -837,6 +838,22 @@ function addNote(it){
 }
 $("padT").oninput = padSave;
 $("padCopy").onclick = () => copy($("padT").value);
+/* resumo da call pela IA (decisões, tarefas, prazos) entra no fim do bloco */
+$("padSum").onclick = async () => {
+  if (!items.length) return toast("A call ainda está vazia");
+  rollText($("padS"), "Resumindo a call…");
+  const r = await fetch("/summary", { method: "POST", body: "{}" }).then(r => r.json()).catch(() => null);
+  if (!r || r.error){ rollText($("padS"), "Salva sozinho"); return toast((r && r.error) || "Não deu pra resumir agora"); }
+  if (!r.items.length){ rollText($("padS"), "Salva sozinho"); return toast("Nada importante pra resumir ainda"); }
+  const t = $("padT"), h = new Date().toTimeString().slice(0, 5);
+  t.value = (t.value.trim() ? t.value.trimEnd() + "\n\n" : "") + `## Resumo da call (${h})\n` + r.items.map(x => "• " + x).join("\n") + "\n";
+  t.scrollTop = t.scrollHeight; padSave(); pulse(); toast("Resumo pronto");
+};
+$("padMd").onclick = async () => {
+  if (!$("padT").value.trim()) return toast("O bloco está vazio");
+  const r = await fetch("/export", { method: "POST", body: JSON.stringify({ text: $("padT").value }) }).then(r => r.json()).catch(() => null);
+  toast(r && r.ok ? "Salvo em Notas" : "Não deu pra salvar");
+};
 let padArm = 0;
 $("padClear").onclick = () => { if (Date.now() - padArm < 2500){ padArm = 0; $("padT").value = ""; padSave(); return; }
   padArm = Date.now(); toast("Clica de novo pra limpar as notas"); };
@@ -844,7 +861,7 @@ fetch("/pad").then(r => r.json()).then(r => { $("padT").value = r.text || ""; })
 /* anotar sozinho (LAST 22/11): de tempos em tempos a IA escolhida em Ajustes lê as falas novas e escreve os tópicos no bloco.
    Dispara com 6 falas novas, ou com 3 depois de 40 s de silêncio. Só o que é concreto: decisão, tarefa, prazo, nome. */
 let topicN = 0, topicAt = 0, topicLast = 0, topicBusy = false;
-function autoLabel(){ $("padAuto").textContent = "Anotar sozinho: " + (pref.auto === false ? "desligado" : "ligado"); $("padAuto").style.color = pref.auto === false ? "" : "var(--crown-ink)"; }
+function autoLabel(){ $("padAuto").textContent = "Auto " + (pref.auto === false ? "off" : "on"); $("padAuto").style.color = pref.auto === false ? "" : "var(--crown-ink)"; }
 async function takeTopics(manual){
   if (topicBusy) return; topicBusy = true; topicN = 0;
   if (manual) rollText($("padS"), "Lendo a call");
@@ -876,7 +893,19 @@ async function translate(){
   fillDock("Tua frase em inglês", "", rows);
   copy(r.informal, true); $("msg").select();
 }
-$("msg").onkeydown = e => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); translate(); } if (e.key === "Escape") $("msg").blur(); };
+/* ---------- perguntar sobre a call (27/11): "o que decidimos sobre a data?" responde com o que foi dito ---------- */
+let asking = false;
+async function askCall(){
+  const q = $("msg").value.trim(); if (!q){ toast("Escreve a pergunta primeiro"); $("msg").focus(); return; }
+  if (asking) return; asking = true; rollText($("askL"), "Procurando na call"); gsap.to(S, { think: 1, duration: .5, overwrite: "auto" });
+  const r = await fetch("/ask", { method: "POST", body: JSON.stringify({ q }) }).then(r => r.json()).catch(() => null);
+  asking = false; rollText($("askL"), "Perguntar à call"); gsap.to(S, { think: 0, duration: .5, overwrite: "auto" });
+  if (!r || r.error){ dock("Resposta", "").innerHTML = `<div class="note">${esc((r && r.error) || "Não deu pra responder agora.")}</div>`; return; }
+  fillDock("Resposta", "com base no que foi dito na call", [sgRow(0, r.answer, "Tua pergunta: " + q)]);
+}
+$("askCall").onclick = askCall;
+$("msg").onkeydown = e => { if (e.key === "Enter" && e.ctrlKey){ e.preventDefault(); askCall(); return; }
+  if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); translate(); } if (e.key === "Escape") $("msg").blur(); };
 $("send").onclick = translate;
 
 /* ---------- utilidades ---------- */

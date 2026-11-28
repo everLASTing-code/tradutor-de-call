@@ -501,6 +501,59 @@ def public(item):
     return {k: v for k, v in item.items() if k != "file" and not k.startswith("_")}
 
 
+# ---------------------------------------------------------------- perguntar sobre a call e resumo (27/11)
+# LAST mandou prints de um app com "Perguntar" (sincronizado com o Ouvir: "o que decidimos sobre a data?")
+# e "Notas automaticas". Aqui: a pergunta vai pra IA junto com a transcricao da call, e o resumo idem.
+def ia_any(conf):
+    """IA pra perguntar/resumir: a escolhida em Ajustes ou qualquer uma que tenha chave."""
+    ia = conf.get("ia", "off")
+    if ia in PROVIDERS and ia_key(conf, ia):
+        return ia
+    return next((k for k in PROVIDERS if ia_key(conf, k)), None)
+
+
+def call_text(limit=160):
+    lines = [f"[{h.get('t', '')[:5]}] {'(me) ' if h.get('mine') else ''}{h['en']}" for h in history[-limit:]]
+    return "\n".join(lines) or "(nothing was said yet)"
+
+
+ASK_PROMPT = """You help {me}, a Brazilian, during a live call in English. Below is the live transcript (may have small transcription errors). Answer {me}'s question in natural Brazilian Portuguese, short (1 to 3 sentences), using ONLY what was said in the call. Quote names, numbers and dates exactly. If the call does not cover it, say so in one sentence.
+
+Transcript:
+{call}
+
+Question: {q}
+Return ONLY a JSON list with one string: the answer."""
+
+SUMMARY_PROMPT = """Summarize this live call (transcript below, may have small errors) for {me}, a Brazilian, in Brazilian Portuguese. Return ONLY a JSON list of strings, each one a short bullet (max 18 words): first the decisions, then tasks with who and deadline, then other important points. Max 8 bullets. No greetings or small talk. If nothing relevant was said, return [].
+
+Transcript:
+{call}"""
+
+
+def ask_call(q):
+    conf = load_conf()
+    ia = ia_any(conf)
+    if not ia:
+        raise UserError("Pra perguntar, cola a chave de uma IA em Ajustes → Respostas (a do Gemini é grátis).")
+    if not history:
+        return {"answer": "Ainda não tem nada da call pra eu olhar."}
+    data = ask_ia(ASK_PROMPT.format(me=my_name(conf), call=call_text(), q=q[:400]), {**conf, "ia": ia}, temperature=0.2)
+    ans = next((str(d).strip() for d in data if str(d).strip()), "")
+    return {"answer": ans or "Não consegui responder agora."}
+
+
+def call_summary():
+    conf = load_conf()
+    ia = ia_any(conf)
+    if not ia:
+        raise UserError("Pro resumo, cola a chave de uma IA em Ajustes → Respostas (a do Gemini é grátis).")
+    if len(history) < 2:
+        return {"items": []}
+    data = ask_ia(SUMMARY_PROMPT.format(me=my_name(conf), call=call_text(300)), {**conf, "ia": ia}, temperature=0.2)
+    return {"items": [str(d).strip() for d in data if str(d).strip()][:8]}
+
+
 last_sugs = []   # ultimas sugestoes (pros atalhos Ctrl+Shift+1/2/3)
 
 
@@ -1010,6 +1063,28 @@ class H(BaseHTTPRequestHandler):
             except Exception as e:
                 log("atualizacao falhou:", repr(e)[:200])
                 self._json({"error": "Não deu pra baixar a atualização. Tenta de novo ou baixa pelo site."})
+        elif self.path in ("/ask", "/summary", "/export"):  # perguntar sobre a call / resumo / salvar notas .md
+            try:
+                if self.path == "/ask":
+                    self._json(ask_call(str(body.get("q") or "").strip()))
+                elif self.path == "/summary":
+                    self._json(call_summary())
+                else:
+                    pasta = os.path.join(DATA, "notas")
+                    os.makedirs(pasta, exist_ok=True)
+                    fp = os.path.join(pasta, datetime.now().strftime("Notas da call %Y-%m-%d %H-%M.md"))
+                    with open(fp, "w", encoding="utf8") as f:
+                        f.write(str(body.get("text") or ""))
+                    try:
+                        os.startfile(pasta)   # abre a pasta pra pessoa ver o arquivo
+                    except Exception:
+                        pass
+                    self._json({"ok": True, "path": fp})
+            except UserError as e:
+                self._json({"error": str(e)})
+            except Exception as e:
+                log(self.path, "falhou:", repr(e)[:200])
+                self._json({"error": "Não deu agora. Tenta de novo."})
         elif self.path == "/topics":  # o bloco de notas pede os topicos novos da call
             try:
                 self._json(topics(int(body.get("since") or 0)))

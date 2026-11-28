@@ -2,11 +2,12 @@
 
 Se o Windows mostrar "O Windows protegeu o computador", clica em "Mais informações" e em "Executar assim mesmo". O aviso aparece porque o instalador não tem assinatura paga.
 
+**Novo na 0.1.7:**
+- Perguntar à call: escreve "o que decidimos sobre a data?" no Responder e aperta Ctrl+Enter. A resposta vem do que foi dito.
+- Resumo da call nas Notas: decisões, tarefas e prazos num clique. Salvar as notas em .md.
+
 **Novo na 0.1.6:**
 - O app agora se chama Ponte, com ícone de fone e onda de voz. O atalho antigo é trocado sozinho.
-
-**Novo na 0.1.5:**
-- O app agora se chama TLS e tem ícone novo. O atalho antigo é trocado sozinho.
 
 **Novo na 0.1.4:**
 - Transcrição bem mais certa: quando a pessoa fala com pausas, o app ouve de novo a fala inteira e refaz a linha, em vez de transcrever pedacinho por pedacinho.
